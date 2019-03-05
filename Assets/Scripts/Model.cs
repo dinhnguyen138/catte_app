@@ -5,8 +5,19 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-public class Model
+public class SendCommand
 {
+    [JsonProperty("action")]
+    public string action;
+
+    [JsonProperty("room")]
+    public string room;
+
+    [JsonProperty("id")]
+    public string userId;
+
+    [JsonProperty("data")]
+    public string data;
 }
 
 public class Command {
@@ -19,11 +30,8 @@ public class Command {
 
 public class Player
 {
-    //[JsonProperty("info")]
-    //public PlayerInfo playerInfo;
-
-    [JsonProperty("id")]
-    public string id;
+    [JsonProperty("info")]
+    public PlayerInfo playerInfo;
 
     [JsonProperty("numcard")]
     public int numCard;
@@ -36,7 +44,14 @@ public class Player
 
     [JsonProperty("finalist")]
     public bool finalist;
-    
+
+    [JsonProperty("ishost")]
+    public bool isHost;
+
+    [JsonProperty("disconnected")]
+    public bool disconnected;
+
+    public int mappedIndex;
     public List<string> cards;
 }
 
@@ -59,7 +74,7 @@ public class PlayData {
     [JsonProperty("id")]
     public string id;
 
-    [JsonProperty("card")]
+    [JsonProperty("data")]
     public string card;
 }
 

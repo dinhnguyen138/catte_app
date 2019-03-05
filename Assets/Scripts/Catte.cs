@@ -9,15 +9,28 @@ public class Catte : MonoBehaviour
         Idle,
         Ready,
         Joint,
+        New,
+        Leave,
         Cards,
         Play,
     }
-    private static string uuid = "1";// System.Guid.NewGuid().ToString();
+
+    private const int MAXPLAYER = 6;
+
+    // Replace with real data later
+    private string userId = System.Guid.NewGuid().ToString();
+    private string roomId = "1";
+    private PlayerInfo playerInfo = new PlayerInfo();
+    private bool inGame = false;
+    private int leavePlayerIndex;
 
     public Sprite[] cards;
     public GameObject playerCard;
+    public GameObject userInfo;
     public GameObject playerView;
-    public GameObject[] otherPlayerView;
+    public GameObject[] playView;
+    public GameObject[] otherCard;
+    public GameObject[] playerInfos;
     public Button startButton;
     public Button foldButton;
     public Button playButton;
@@ -34,15 +47,23 @@ public class Catte : MonoBehaviour
     // Start is called before the first frame update
     void Awake()
     {
+        playerInfo.userId = userId;
+        playerInfo.userName = System.Guid.NewGuid().ToString();
+        playerInfo.image = "";
+        playerInfo.amount = 1000000;
         currentState = State.Ready;
         player = null;
         otherPlayers = new List<Player>();
         plays = new List<Play>();
         GameClient.Init();
         GameClient.OnConnectEvent += OnConnect;
-        GameClient.OnJoinEvent += OnJoin;
-        GameClient.OnCardsEvent += OnCards;
-        startButton.gameObject.SetActive(true);
+        MessageHandler.Init(roomId, userId);
+        MessageHandler.OnJoinEvent += OnJoin;
+        MessageHandler.OnNewPlayerEvent += OnNewPlayer;
+        MessageHandler.OnLeaveEvent += OnLeave;
+        MessageHandler.OnCardsEvent += OnCards;
+        MessageHandler.OnPlayEvent += OnPlay;
+        startButton.gameObject.SetActive(false);
         startButton.onClick.AddListener(StartGame);
         playButton.gameObject.SetActive(false);
         playButton.onClick.AddListener(PlayCard);
@@ -58,16 +79,26 @@ public class Catte : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (currentState == State.Play) {
+        if (currentState == State.Play)
+        {
             RenderPlays();
         }
+
         if (currentState == State.Cards)
         {
-            if (player != null && player.cards != null)
-            {
-                RenderCards();
-            }
+            RenderCards();
         }
+
+        if (currentState == State.Joint)
+        {
+            if (!inGame && otherPlayers.Count != 0)
+            {
+                startButton.gameObject.SetActive(true);
+            }
+            RenderPlayers();
+        }
+
+        
 
         currentState = State.Idle;
     }
@@ -75,8 +106,11 @@ public class Catte : MonoBehaviour
     public void OnApplicationQuit()
     {
         GameClient.OnConnectEvent -= OnConnect;
-        GameClient.OnJoinEvent -= OnJoin;
-        GameClient.OnCardsEvent -= OnCards;
+        MessageHandler.OnNewPlayerEvent -= OnNewPlayer;
+        MessageHandler.OnLeaveEvent -= OnLeave;
+        MessageHandler.OnJoinEvent -= OnJoin;
+        MessageHandler.OnCardsEvent -= OnCards;
+        MessageHandler.OnPlayEvent -= OnPlay;
         GameClient.Disconnect();
 
         startButton.onClick.RemoveAllListeners();
@@ -88,83 +122,194 @@ public class Catte : MonoBehaviour
         float xOffset;
         float zOffset;
 
-        xOffset = -2.5f;
+        xOffset = -3.3f;
         zOffset = 0.03f;
         for (int i = 0; i < player.cards.Count; i++)
         {
             Debug.Log(player.cards[i]);
             GameObject newCard = Instantiate(playerCard, new Vector3(playerView.transform.position.x + xOffset, playerView.transform.position.y, playerView.transform.position.z - zOffset), Quaternion.identity);
+            Selectable selectable = newCard.GetComponent<Selectable>();
+            selectable.faceup = true;
             newCard.name = player.cards[i];
             xOffset += 1.3f;
             zOffset += 0.03f;
             Debug.Log(transform.position.x);
         }
-        //for (int j = 0; j < otherPlayers.Count; j++)
-        //{
-        //    xOffset = -0.7f;
-        //    xOffset = 0.03f;
-        //    GameObject newCard = Instantiate(playerCard, new Vector3(otherPlayerView[j].transform.position.x + xOffset, otherPlayerView[j].transform.position.y, otherPlayerView[j].transform.position.z - zOffset), Quaternion.identity);
-        //    xOffset += 0.3f;
-        //    zOffset += 0.03f;
-        //}
+        for (int j = 0; j < otherPlayers.Count; j++)
+        {
+            Debug.Log("otherplayer " + otherPlayers[j].mappedIndex);
+            GameObject newCard = Instantiate(playerCard, new Vector3(otherCard[otherPlayers[j].mappedIndex].transform.position.x, otherCard[otherPlayers[j].mappedIndex].transform.position.y, otherCard[otherPlayers[j].mappedIndex].transform.position.z), Quaternion.identity);
+            newCard.transform.localScale = new Vector3(newCard.transform.localScale.x * 0.6f, newCard.transform.localScale.y * 0.6f, 0);
+        }
     }
 
     public void RenderPlays() {
         foreach(var p in plays)
         {
-            if(p.userid == uuid)
+            if(p.userid == userId)
             {
                 player.cards.Remove(p.card);
+                Debug.Log(p.card);
                 GameObject obj = GameObject.Find(p.card);
                 Selectable selectable = obj.GetComponent<Selectable>();
-                if (p.action == GameClient.FOLD)
+                if (p.action == MessageHandler.FOLD)
                 {
                     selectable.faceup = false;
                 }
                 float xOffset = -0.7f + (0.3f * (5 - player.cards.Count));
                 float zOffset = 0.03f + (0.03f * (5 - player.cards.Count));
-                selectable.targetPos = new Vector3(otherPlayerView[0].transform.position.x + xOffset, otherPlayerView[0].transform.position.y, otherPlayerView[0].transform.position.z - zOffset);
+                selectable.targetPos = new Vector3(playView[0].transform.position.x + xOffset, playView[0].transform.position.y, playView[0].transform.position.z - zOffset);
                 Debug.Log("XXXXXX");
                 Debug.Log(selectable.targetPos);
                 Debug.Log(obj.transform.position);
                 selectable.targetScale = new Vector3(obj.transform.localScale.x * 0.8f, obj.transform.localScale.y * 0.8f, obj.transform.localScale.z);
             }
+            else
+            {
+
+            }
         }
         plays.Clear();
+    }
+
+    void RenderNewPlayer() {
+        Player player = otherPlayers[otherPlayers.Count - 1];
+        Canvas canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
+        GameObject obj = Instantiate(userInfo);
+        obj.name = player.playerInfo.userId;
+        obj.transform.SetParent(canvas.transform, false);
+        obj.transform.position = new Vector3(playerInfos[player.mappedIndex + 1].transform.position.x, playerInfos[player.mappedIndex + 1].transform.position.y, playerInfos[player.mappedIndex + 1].transform.position.z);
+        Text[] child = obj.GetComponentsInChildren<Text>();
+        for (int i = 0; i < child.Length; i++)
+        {
+            child[i].transform.SetParent(obj.transform);
+            if (child[i].name == "Username")
+            {
+                child[i].text = player.playerInfo.userId;
+            }
+            if (child[i].name == "Amount")
+            {
+                child[i].text = player.playerInfo.amount.ToString();
+            }
+        }
+        
+        obj.transform.localScale = new Vector3(1, 1, 1);
+    }
+
+    void RenderPlayers() {
+        
+        Canvas canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
+        GameObject obj = Instantiate(userInfo);
+        obj.name = player.playerInfo.userId;
+        obj.transform.SetParent(canvas.transform, false);
+        obj.transform.position = new Vector3(playerInfos[0].transform.position.x, playerInfos[0].transform.position.y, playerInfos[0].transform.position.z);
+        Text[] child = obj.GetComponentsInChildren<Text>();
+        for (int i = 0; i < child.Length; i++)
+        {
+            if (child[i].name == "Username")
+            {
+                child[i].text = player.playerInfo.userId;
+            }
+            if (child[i].name == "Amount")
+            {
+                child[i].text = player.playerInfo.amount.ToString();
+            }
+        }
+        
+        obj.transform.localScale = new Vector3(1, 1, 1);
+
+        for (int i = 0; i < otherPlayers.Count; i++)
+        {
+            Debug.Log("xxxxx");
+            GameObject otherObj = Instantiate(userInfo);
+            otherObj.name = otherPlayers[i].playerInfo.userId;
+            otherObj.transform.SetParent(canvas.transform, false);
+            otherObj.transform.position = new Vector3(playerInfos[otherPlayers[i].mappedIndex + 1].transform.position.x, playerInfos[otherPlayers[i].mappedIndex + 1].transform.position.y, playerInfos[otherPlayers[i].mappedIndex + 1].transform.position.z);
+            Text[] otherChilds = otherObj.GetComponentsInChildren<Text>();
+            for (int j = 0; j < otherChilds.Length; j++)
+            {
+                if (otherChilds[i].name == "Username")
+                {
+                    otherChilds[i].text = otherPlayers[i].playerInfo.userId;
+                }
+                if (otherChilds[i].name == "Amount")
+                {
+                    otherChilds[i].text = otherPlayers[i].playerInfo.amount.ToString();
+                }
+            }
+            
+            otherObj.transform.localScale = new Vector3(1, 1, 1);
+        }
     }
 
     public void StartGame() {
         startButton.gameObject.SetActive(false);
         Debug.Log("StartGame");
-        string msg = "{\"action\": \"DEAL\", \"room\":\"1\", \"id\":\"" + uuid + "\", \"data\":\"xxx\"}\n";
-        byte[] data = System.Text.Encoding.UTF8.GetBytes(msg);
-        GameClient.Send(data);
+        MessageHandler.Deal();
     }
 
     public void OnConnect()
     {
         Debug.Log("Server Connected");
-        string msg = "{\"action\": \"JOIN\", \"room\":\"1\", \"id\":\"" + uuid + "\", \"data\":\"\"}\n";
-        byte[] data = System.Text.Encoding.UTF8.GetBytes(msg);
-        GameClient.Send(data);
+        MessageHandler.JoinRoom(playerInfo);
     }
 
     public void OnJoin(List<Player> players) {
         otherPlayers.Clear();
         foreach(var p in players) {
-            if (p == null) {
-                continue;
-            }
-            if (p.id == uuid)
+            if (p.inGame == true)
             {
+                //inGame = true;
+            }
+            if (p.playerInfo.userId == userId)
+            {
+                
                 Debug.Log("JOINT");
                 player = p;
+                player.mappedIndex = 0;
             }
             else {
+                Debug.Log("Have other player");
                 otherPlayers.Add(p);
             }
         }
+
+        for (int i = 0; i < otherPlayers.Count; i++)
+        {
+            otherPlayers[i].mappedIndex = MapIndex(player.index, otherPlayers[i].index);
+        }
+
+        currentState = State.Joint;
     }
+
+    public void OnNewPlayer(Player newPlayer) {
+        newPlayer.mappedIndex = MapIndex(player.index, newPlayer.index);
+        otherPlayers.Add(newPlayer);
+        currentState = State.New;
+    }
+
+    public void OnLeave(string id)
+    {
+        for (int i = 0; i < otherPlayers.Count; i++) {
+            if (otherPlayers[i].playerInfo.userId == id) {
+                leavePlayerIndex = otherPlayers[i].mappedIndex;
+            }
+        }
+        currentState = State.Leave;
+    }
+    
+    private int MapIndex(int playerIndex, int otherPlayerIndex)
+    {
+        Debug.Log(playerIndex.ToString() + " " + otherPlayerIndex.ToString());
+        if (otherPlayerIndex < playerIndex)
+        {
+            return playerIndex - otherPlayerIndex - 1;
+        }
+        else
+        {
+            return MAXPLAYER - otherPlayerIndex - 1;
+        }
+    } 
 
     public void OnCards(List<string> cards) {
         player.cards = cards;
@@ -227,14 +372,9 @@ public class Catte : MonoBehaviour
             {
                 s.selected = false;
                 Debug.Log("Select Card Play");
-                Play play = new Play();
-                play.action = GameClient.PLAY;
-                play.userid = uuid;
-                play.card = p;
-                plays.Add(play);
+                MessageHandler.Play(obj.name);
             }
         }
-        currentState = State.Play;
     }
 
     public void FoldCard()
@@ -246,13 +386,14 @@ public class Catte : MonoBehaviour
             if (s.selected == true)
             {
                 s.selected = false;
-                Play play = new Play();
-                play.action = GameClient.FOLD;
-                play.userid = uuid;
-                play.card = p;
-                plays.Add(play);
+                MessageHandler.Fold(obj.name);
             }
         }
+    }
+
+    public void OnPlay(Play play)
+    {
+        plays.Add(play);
         currentState = State.Play;
     }
 
