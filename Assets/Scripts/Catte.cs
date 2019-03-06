@@ -16,6 +16,7 @@ public class Catte : MonoBehaviour
     }
 
     private const int MAXPLAYER = 6;
+    private const int MAXCARD = 6;
 
     // Replace with real data later
     private string userId = System.Guid.NewGuid().ToString();
@@ -43,6 +44,7 @@ public class Catte : MonoBehaviour
     public static string[] values = { "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A" };
 
     private State currentState;
+    private int currentRow;
     
     // Start is called before the first frame update
     void Awake()
@@ -63,6 +65,9 @@ public class Catte : MonoBehaviour
         MessageHandler.OnLeaveEvent += OnLeave;
         MessageHandler.OnCardsEvent += OnCards;
         MessageHandler.OnPlayEvent += OnPlay;
+        MessageHandler.OnStartRowEvent += OnStartRowEvent;
+        MessageHandler.OnEliminatedEvent += OnEliminatedEvent;
+        MessageHandler.OnResultEvent += OnResultEvent;
         startButton.gameObject.SetActive(false);
         startButton.onClick.AddListener(StartGame);
         playButton.gameObject.SetActive(false);
@@ -111,6 +116,9 @@ public class Catte : MonoBehaviour
         MessageHandler.OnJoinEvent -= OnJoin;
         MessageHandler.OnCardsEvent -= OnCards;
         MessageHandler.OnPlayEvent -= OnPlay;
+        MessageHandler.OnStartRowEvent -= OnStartRowEvent;
+        MessageHandler.OnEliminatedEvent -= OnEliminatedEvent;
+        MessageHandler.OnResultEvent -= OnResultEvent;
         GameClient.Disconnect();
 
         startButton.onClick.RemoveAllListeners();
@@ -146,27 +154,44 @@ public class Catte : MonoBehaviour
     public void RenderPlays() {
         foreach(var p in plays)
         {
-            if(p.userid == userId)
+            if (p.userid == userId)
             {
                 player.cards.Remove(p.card);
+                player.numCard--;
                 Debug.Log(p.card);
                 GameObject obj = GameObject.Find(p.card);
                 Selectable selectable = obj.GetComponent<Selectable>();
-                if (p.action == MessageHandler.FOLD)
+                if (p.action == MessageHandler.PLAY)
                 {
-                    selectable.faceup = false;
+                    selectable.faceup = true;
                 }
-                float xOffset = -0.7f + (0.3f * (5 - player.cards.Count));
-                float zOffset = 0.03f + (0.03f * (5 - player.cards.Count));
+                float xOffset = -0.7f + (0.3f * (5 - player.numCard));
+                float zOffset = 0.03f + (0.03f * (5 - player.numCard));
                 selectable.targetPos = new Vector3(playView[0].transform.position.x + xOffset, playView[0].transform.position.y, playView[0].transform.position.z - zOffset);
-                Debug.Log("XXXXXX");
                 Debug.Log(selectable.targetPos);
                 Debug.Log(obj.transform.position);
                 selectable.targetScale = new Vector3(obj.transform.localScale.x * 0.8f, obj.transform.localScale.y * 0.8f, obj.transform.localScale.z);
             }
             else
             {
-
+                foreach (var player in otherPlayers) { 
+                    if (p.userid == player.playerInfo.userId) {
+                        player.numCard--;
+                        int index = player.mappedIndex;
+                        GameObject newCard = Instantiate(playerCard, new Vector3(otherCard[index].transform.position.x, otherCard[index].transform.position.y, otherCard[index].transform.position.z), Quaternion.identity);
+                        newCard.transform.localScale = new Vector3(newCard.transform.localScale.x * 0.6f, newCard.transform.localScale.y * 0.6f, 0);
+                        Selectable selectable = newCard.GetComponent<Selectable>();
+                        if (p.action == MessageHandler.PLAY)
+                        {
+                            selectable.faceup = true;
+                        }
+                        float xOffset = -0.7f + (0.3f * (5 - player.numCard));
+                        float zOffset = 0.03f + (0.03f * (5 - player.numCard));
+                        selectable.targetPos = new Vector3(playView[index + 1].transform.position.x + xOffset, playView[index + 1].transform.position.y, playView[index + 1].transform.position.z - zOffset);
+                        Debug.Log(selectable.targetPos);
+                        selectable.targetScale = new Vector3(newCard.transform.localScale.x * 1.34f, newCard.transform.localScale.y * 1.34f, newCard.transform.localScale.z);
+                    }
+                }
             }
         }
         plays.Clear();
@@ -313,7 +338,23 @@ public class Catte : MonoBehaviour
 
     public void OnCards(List<string> cards) {
         player.cards = cards;
+        player.numCard = MAXCARD;
+        foreach(var p in otherPlayers) {
+            p.numCard = 6;
+        }
         currentState = State.Cards;
+    }
+
+    public void OnStartRowEvent(string id) {
+    
+    }
+
+    public void OnEliminatedEvent(List<string> disqualifiers) {
+        
+    }
+
+    public void OnResultEvent() {
+    
     }
 
     public static List<string> generateDeck() {

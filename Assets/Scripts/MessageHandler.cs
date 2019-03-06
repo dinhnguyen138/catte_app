@@ -13,12 +13,16 @@ static class MessageHandler
     public delegate void OnLeave(string id);
     public delegate void OnCards(List<string> cards);
     public delegate void OnPlay(Play play);
+    public delegate void OnStartRow(string id);
+    public delegate void OnEliminated(List<string> disqualifiers);
     public delegate void OnResult();
     public static event OnJoin OnJoinEvent;
     public static event OnNewPlayer OnNewPlayerEvent;
     public static event OnLeave OnLeaveEvent;
     public static event OnCards OnCardsEvent;
     public static event OnPlay OnPlayEvent;
+    public static event OnStartRow OnStartRowEvent;
+    public static event OnEliminated OnEliminatedEvent;
     public static event OnResult OnResultEvent;
 
     public const string JOIN = "JOIN";
@@ -29,7 +33,6 @@ static class MessageHandler
     public const string CARDS = "CARDS";
     public const string ELIMINATED = "ELIMINATED";
     public const string STARTROW = "STARTROW";
-    public const string SHOWBACK = "SHOWBACK";
     public const string WINNER = "WINNER";
     public const string PLAY = "PLAY";
     public const string FOLD = "FOLD";
@@ -70,6 +73,14 @@ static class MessageHandler
                 play.card = playData.card;
                 OnPlayEvent(play);
                 break;
+            case STARTROW:
+                string id = JsonConvert.DeserializeObject<string>(command.data);
+                OnStartRowEvent(id);
+                break;
+            case ELIMINATED:
+                List<string> disqualifiers = JsonConvert.DeserializeObject<List<string>>(command.data);
+                OnEliminatedEvent(disqualifiers);
+                break; 
             default:
                 Debug.Log("Received unhandled event " + command.action);
                 break;
