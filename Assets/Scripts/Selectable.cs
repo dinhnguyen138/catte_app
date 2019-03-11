@@ -8,7 +8,7 @@ public class Selectable : MonoBehaviour
     public bool deselected = false;
     public bool faceup = false;
     public bool lost = false;
-    public int sortingOrder = 0;
+    public int sortingOrder = 1;
     public Vector3 targetPos = Vector3.zero;
     public Vector3 targetScale = Vector3.zero;
     // Start is called before the first frame update
