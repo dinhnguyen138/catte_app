@@ -24,7 +24,7 @@ public static class GameClient
         tcpClient = new TcpClient();
         tcpClient.ReceiveBufferSize = 4096;
         tcpClient.SendBufferSize = 4096;
-        tcpClient.BeginConnect("127.0.0.1", 9999, new AsyncCallback(ClientConnect), tcpClient);
+        tcpClient.BeginConnect("192.168.1.47", 9999, new AsyncCallback(ClientConnect), tcpClient);
     }
 
     private static void ClientConnect(IAsyncResult ar)
@@ -57,7 +57,6 @@ public static class GameClient
             Array.Copy(recvBuffer, buffer, length);
             Array.Clear(recvBuffer, 0, recvBuffer.Length);
             string message = System.Text.Encoding.UTF8.GetString(buffer);
-            Debug.Log(message);
             MessageHandler.HandleMessage(message);
             stream.BeginRead(recvBuffer, 0, recvBuffer.Length, ClientReceive, null);
         }

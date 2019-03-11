@@ -10,18 +10,18 @@ static class MessageHandler
 {
     public delegate void OnJoin(List<Player> players);
     public delegate void OnNewPlayer(Player player);
-    public delegate void OnLeave(string id);
+    public delegate void OnLeave(int index);
     public delegate void OnCards(List<string> cards);
-    public delegate void OnPlay(Play play);
-    public delegate void OnStartRow(string id);
-    public delegate void OnEliminated(List<string> disqualifiers);
+    public delegate void OnPlay(PlayData play);
+    public delegate void OnStart(int index);
+    public delegate void OnEliminated(List<int> disqualifiers);
     public delegate void OnResult();
     public static event OnJoin OnJoinEvent;
     public static event OnNewPlayer OnNewPlayerEvent;
     public static event OnLeave OnLeaveEvent;
     public static event OnCards OnCardsEvent;
     public static event OnPlay OnPlayEvent;
-    public static event OnStartRow OnStartRowEvent;
+    public static event OnStart OnStartEvent;
     public static event OnEliminated OnEliminatedEvent;
     public static event OnResult OnResultEvent;
 
@@ -32,19 +32,42 @@ static class MessageHandler
     public const string LEAVE = "LEAVE";
     public const string CARDS = "CARDS";
     public const string ELIMINATED = "ELIMINATED";
-    public const string STARTROW = "STARTROW";
+    public const string START = "START";
     public const string WINNER = "WINNER";
     public const string PLAY = "PLAY";
     public const string FOLD = "FOLD";
     private static string room;
     private static string user;
+    private static int index;
+    private static object lockObj;
+    private static List<string> listMessage;
 
     public static void Init(string roomId, string userId)
     {
         room = roomId;
         user = userId;
+        lockObj = new object();
+        listMessage = new List<string>();
     }
+    public static void SetIndex(int userIndex)
+    {
+        index = userIndex;
+    }
+
     public static void HandleMessage(string message) {
+        Debug.Log(message);
+        string[] messages = message.Split('\n');
+        for (int i = 0; i < messages.Length; i++)
+        {
+            if (messages[i] != "")
+            {
+                listMessage.Add(messages[i]);
+            }
+        }
+    }
+
+    public static void ProcessMessage(string message)
+    { 
         Command command = JsonConvert.DeserializeObject<Command>(message);
         Debug.Log("Receive command " + command.action);
         switch (command.action)
@@ -58,7 +81,7 @@ static class MessageHandler
                 OnNewPlayerEvent(player);
                 break;
             case LEAVE:
-                OnLeaveEvent(command.data);
+                OnLeaveEvent(Convert.ToInt32(command.data));
                 break;
             case CARDS:
                 List<string> cards = JsonConvert.DeserializeObject<List<string>>(command.data);
@@ -67,18 +90,15 @@ static class MessageHandler
             case PLAY:
             case FOLD:
                 PlayData playData = JsonConvert.DeserializeObject<PlayData>(command.data);
-                Play play = new Play();
-                play.action = command.action;
-                play.userid = playData.id;
-                play.card = playData.card;
-                OnPlayEvent(play);
+                playData.action = command.action;
+                OnPlayEvent(playData);
                 break;
-            case STARTROW:
+            case START:
                 string id = JsonConvert.DeserializeObject<string>(command.data);
-                OnStartRowEvent(id);
+                OnStartEvent(Convert.ToInt32(command.data));
                 break;
             case ELIMINATED:
-                List<string> disqualifiers = JsonConvert.DeserializeObject<List<string>>(command.data);
+                List<int> disqualifiers = JsonConvert.DeserializeObject<List<int>>(command.data);
                 OnEliminatedEvent(disqualifiers);
                 break; 
             default:
@@ -87,13 +107,25 @@ static class MessageHandler
         }
     }
 
+    public static void ProcessMessage()
+    {
+        if(listMessage == null)
+            {
+                return;
+            }
+            for (int i = 0; i < listMessage.Count; i++)
+            {
+                ProcessMessage(listMessage[i]);
+            }
+            listMessage.Clear();
+    }
+
     public static void JoinRoom(PlayerInfo playerInfo)
     {
         string data = JsonConvert.SerializeObject(playerInfo);
         SendCommand command = new SendCommand();
         command.action = JOIN;
         command.room = room;
-        command.userId = user;
         command.data = data;
         string sendData = JsonConvert.SerializeObject(command) + "\n";
         GameClient.Send(System.Text.Encoding.UTF8.GetBytes(sendData));
@@ -103,7 +135,7 @@ static class MessageHandler
         SendCommand command = new SendCommand();
         command.action = DEAL;
         command.room = room;
-        command.userId = user;
+        command.index = index;
         command.data = "";
         string sendData = JsonConvert.SerializeObject(command) + "\n";
         GameClient.Send(System.Text.Encoding.UTF8.GetBytes(sendData));
@@ -114,7 +146,7 @@ static class MessageHandler
         SendCommand command = new SendCommand();
         command.action = PLAY;
         command.room = room;
-        command.userId = user;
+        command.index = index;
         command.data = card;
         string sendData = JsonConvert.SerializeObject(command) + "\n";
         GameClient.Send(System.Text.Encoding.UTF8.GetBytes(sendData));
@@ -125,7 +157,7 @@ static class MessageHandler
         SendCommand command = new SendCommand();
         command.action = FOLD;
         command.room = room;
-        command.userId = user;
+        command.index = index;
         command.data = card;
         string sendData = JsonConvert.SerializeObject(command) + "\n";
         GameClient.Send(System.Text.Encoding.UTF8.GetBytes(sendData));

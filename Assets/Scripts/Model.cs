@@ -1,9 +1,5 @@
 ﻿using Newtonsoft.Json;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 public class SendCommand
 {
@@ -13,8 +9,8 @@ public class SendCommand
     [JsonProperty("room")]
     public string room;
 
-    [JsonProperty("id")]
-    public string userId;
+    [JsonProperty("index")]
+    public int index;
 
     [JsonProperty("data")]
     public string data;
@@ -26,33 +22,6 @@ public class Command {
 
     [JsonProperty("data")]
     public string data;
-}
-
-public class Player
-{
-    [JsonProperty("info")]
-    public PlayerInfo playerInfo;
-
-    [JsonProperty("numcard")]
-    public int numCard;
-
-    [JsonProperty("index")]
-    public int index;
-
-    [JsonProperty("ingame")]
-    public bool inGame;
-
-    [JsonProperty("finalist")]
-    public bool finalist;
-
-    [JsonProperty("ishost")]
-    public bool isHost;
-
-    [JsonProperty("disconnected")]
-    public bool disconnected;
-
-    public int mappedIndex;
-    public List<string> cards;
 }
 
 public class PlayerInfo
@@ -70,9 +39,30 @@ public class PlayerInfo
     public double amount;
 }
 
+public class WinnerData
+{
+    [JsonProperty("index")]
+    public int winnerIndex;
+
+    [JsonProperty("lastplays")]
+    public List<PlayData> lastPlays;
+}
+
 public class PlayData {
-    [JsonProperty("id")]
-    public string id;
+
+    public string action;
+
+    [JsonProperty("index")]
+    public int index;
+
+    [JsonProperty("row")]
+    public int row;
+
+    [JsonProperty("nextturn")]
+    public int nextTurn;
+
+    [JsonProperty("newrow")]
+    public bool newRow;
 
     [JsonProperty("data")]
     public string card;
@@ -82,8 +72,8 @@ public class Play {
     [JsonProperty("action")]
     public string action;
 
-    [JsonProperty("id")]
-    public string userid;
+    [JsonProperty("index")]
+    public int index;
 
     [JsonProperty("card")]
     public string card;
