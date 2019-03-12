@@ -24,7 +24,7 @@ public static class GameClient
         tcpClient = new TcpClient();
         tcpClient.ReceiveBufferSize = 4096;
         tcpClient.SendBufferSize = 4096;
-        tcpClient.BeginConnect("192.168.1.47", 9999, new AsyncCallback(ClientConnect), tcpClient);
+        tcpClient.BeginConnect("35.186.159.58", 9999, new AsyncCallback(ClientConnect), tcpClient);
     }
 
     private static void ClientConnect(IAsyncResult ar)
