@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class Catte : MonoBehaviour
@@ -9,9 +10,8 @@ public class Catte : MonoBehaviour
     private const int MAXCARD = 6;
 
     // Replace with real data later
-    private string userId = "1111";
-    private string roomId = "1";
-    private PlayerInfo playerInfo = new PlayerInfo();
+    private PlayerInfo playerInfo;
+    private RoomInfo roomInfo;
     private bool inGame = false;
     private int row = -1;
     private int turn = -1;
@@ -21,6 +21,8 @@ public class Catte : MonoBehaviour
     public GameObject playerCard;
     public GameObject userInfo;
     public GameObject playerView;
+    public GameObject eliminatedIndicator;
+    public GameObject otherIndicator;
     public GameObject[] playView;
     public GameObject[] otherCard;
     public GameObject[] playerInfos;
@@ -48,20 +50,26 @@ public class Catte : MonoBehaviour
         {"K", 13 },
         {"A", 14 }
     };
-    
+
     // Start is called before the first frame update
     void Awake()
     {
-        
-        playerInfo.userId = userId;
-        playerInfo.userName = System.Guid.NewGuid().ToString();
-        playerInfo.image = "";
-        playerInfo.amount = 1000000;
+        playerInfo = GameData.currentPlayer;
+        roomInfo = GameData.currentRoom;
+        Text room = GameObject.Find("Room Id").GetComponent<Text>();
+        room.text = roomInfo.roomid;
+        Text amount = GameObject.Find("Amount Value").GetComponent<Text>();
+        amount.text = Converter.ConvertToMoney(roomInfo.amount);
         player = null;
         otherPlayers = new List<Player>();
-        GameClient.Init();
+
         GameClient.OnConnectEvent += OnConnect;
-        MessageHandler.Init(roomId, userId);
+        if (roomInfo.host == "")
+        {
+            roomInfo.host = Setting.GetHost();
+        }
+        GameClient.Init(roomInfo.host);
+
         MessageHandler.OnJoinEvent += OnJoin;
         MessageHandler.OnNewPlayerEvent += OnNewPlayer;
         MessageHandler.OnLeaveEvent += OnLeave;
@@ -69,7 +77,10 @@ public class Catte : MonoBehaviour
         MessageHandler.OnPlayEvent += OnPlay;
         MessageHandler.OnStartEvent += OnStart;
         MessageHandler.OnEliminatedEvent += OnEliminated;
-        MessageHandler.OnResultEvent += OnResultEvent;
+        MessageHandler.OnErrorEvent += OnError;
+        MessageHandler.OnResultEvent += OnResult;
+        MessageHandler.Init(roomInfo.roomid, playerInfo.userId);
+
         startButton.gameObject.SetActive(false);
         startButton.onClick.AddListener(StartGame);
         playButton.gameObject.SetActive(false);
@@ -99,7 +110,8 @@ public class Catte : MonoBehaviour
         MessageHandler.OnPlayEvent -= OnPlay;
         MessageHandler.OnStartEvent -= OnStart;
         MessageHandler.OnEliminatedEvent -= OnEliminated;
-        MessageHandler.OnResultEvent -= OnResultEvent;
+        MessageHandler.OnErrorEvent -= OnError;
+        MessageHandler.OnResultEvent -= OnResult;
         GameClient.Disconnect();
 
         startButton.onClick.RemoveAllListeners();
@@ -116,11 +128,12 @@ public class Catte : MonoBehaviour
             GameObject newCard = Instantiate(playerCard);
             newCard.transform.position = new Vector3(playerView.transform.position.x + xOffset, playerView.transform.position.y, playerView.transform.position.z);
             xOffset += 1.5f;
-            Selectable selectable = newCard.GetComponent<Selectable>();
-            selectable.faceup = true;
-            selectable.lost = false;
+            CardController cardController = newCard.GetComponent<CardController>();
+            cardController.faceup = true;
+            cardController.lost = false;
             newCard.name = player.cards[i];
         }
+
         for (int i = 0; i < otherPlayers.Count; i++)
         {
             GameObject newCard = Instantiate(playerCard);
@@ -129,179 +142,120 @@ public class Catte : MonoBehaviour
         }
     }
 
-    public void RenderPlays(PlayData p) {  
+    public void RenderPlays(PlayData p) {
+        // Update the current row's topcard status
+        if (p.action == MessageHandler.PLAY)
+        {
+            if (lastTopCard != "")
+            {
+                GameObject last = GameObject.Find(lastTopCard);
+                CardController lastCard = last.GetComponent<CardController>();
+                lastCard.lost = true;
+            }
+            lastTopCard = p.card;
+        }
+
+        // Current player's play
         if (p.index == player.index)
         {
             player.cards.Remove(p.card);
             player.numCard--;
+
+            GameObject obj = GameObject.Find(p.card);
+            CardController cardController = obj.GetComponent<CardController>();
+
+            int pos = 5 - player.numCard;
+            float xOffset = -0.7f + (0.4f * pos);
+
+            Vector3 targetPos = Vector3.zero;
+            Vector3 targetScale = Vector3.zero;
+            int order = 1;
             if (p.row < 4)
             {
-                GameObject obj = GameObject.Find(p.card);
-                Selectable selectable = obj.GetComponent<Selectable>();
-                if (p.action == MessageHandler.PLAY)
-                {
-                    selectable.faceup = true;
-                    if (lastTopCard != "")
-                    {
-                        GameObject last = GameObject.Find(lastTopCard);
-                        Selectable sel = last.GetComponent<Selectable>();
-                        sel.lost = true;
-                    }
-                    lastTopCard = p.card;
-                }
-                else
-                {
-                    selectable.faceup = false;
-                    selectable.lost = true;
-                }
-                float xOffset = -0.7f + (0.4f * (5 - player.numCard));
-                float zOffset = 0.1f + (0.1f * (5 - player.numCard));
-                selectable.sortingOrder = 5 - player.numCard;
-                selectable.targetPos = new Vector3(playView[0].transform.position.x + xOffset, playView[0].transform.position.y, playView[0].transform.position.z + zOffset);
-                Debug.Log("XXXXX" + selectable.targetPos.ToString());
-                selectable.targetScale = new Vector3(obj.transform.localScale.x * 0.8f, obj.transform.localScale.y * 0.8f, obj.transform.localScale.z);
+                order = pos + 1;
+                targetPos = new Vector3(playView[0].transform.position.x + xOffset, playView[0].transform.position.y, playView[0].transform.position.z);
+                targetScale = new Vector3(obj.transform.localScale.x * 0.8f, obj.transform.localScale.y * 0.8f, obj.transform.localScale.z);
+            }
+            else if (p.row == 4)
+            {
+                order = 10;
+                targetPos = new Vector3(playerView.transform.position.x, playerView.transform.position.y, playerView.transform.position.z);
+            }
+            else
+            {
+                order = 9;
+                targetPos = new Vector3(playerView.transform.position.x - 0.6f, playerView.transform.position.y, playerView.transform.position.z);
+            }
+            cardController.Action(p.action, p.row, order, targetPos, targetScale);
+
+            if (p.row < 4)
+            {
                 xOffset = -1.3f * (player.cards.Count - 1) / 2;
                 for (int i = 0; i < player.cards.Count; i++)
                 {
-                    GameObject newCard = GameObject.Find(player.cards[i]);
-                    selectable = newCard.GetComponent<Selectable>();
-                    selectable.targetPos = new Vector3(playerView.transform.position.x + xOffset, playerView.transform.position.y, playerView.transform.position.z);
+                    GameObject otherCard = GameObject.Find(player.cards[i]);
+                    cardController = otherCard.GetComponent<CardController>();
+                    cardController.targetPos = new Vector3(playerView.transform.position.x + xOffset, playerView.transform.position.y, playerView.transform.position.z);
                     xOffset += 1.5f;
                 }
             }
             if (p.row == 4)
             {
-                GameObject obj = GameObject.Find(p.card);
-                Selectable selectable = obj.GetComponent<Selectable>();
-                selectable.targetPos = new Vector3(playerView.transform.position.x, playerView.transform.position.y, playerView.transform.position.z + 0.5f);
-                selectable.sortingOrder = 5 - player.numCard;
-                if (p.action == MessageHandler.PLAY)
-                {
-                    selectable.faceup = true;
-                    if (lastTopCard != "")
-                    {
-                        GameObject last = GameObject.Find(lastTopCard);
-                        Selectable sel = last.GetComponent<Selectable>();
-                        sel.lost = true;
-                    }
-                    lastTopCard = p.card;
-                }
-                else
-                {
-                    selectable.faceup = true;
-                    selectable.lost = true;
-                }
-                GameObject other = GameObject.Find(player.cards[0]);
-                selectable = other.GetComponent<Selectable>();
-                selectable.sortingOrder = 5 - player.numCard;
-                selectable.targetPos = new Vector3(playerView.transform.position.x, playerView.transform.position.y, playerView.transform.position.z + 1.0f);
-            }
-            if (p.row == 5)
-            {
-                GameObject obj = GameObject.Find(p.card);
-                Selectable selectable = obj.GetComponent<Selectable>();
-                if (p.action == MessageHandler.PLAY)
-                {
-                    selectable.faceup = true;
-                    if (lastTopCard != "")
-                    {
-                        GameObject last = GameObject.Find(lastTopCard);
-                        Selectable sel = last.GetComponent<Selectable>();
-                        sel.lost = true;
-                    }
-                    lastTopCard = p.card;
-                }
-                else
-                {
-                    selectable.faceup = true;
-                    selectable.lost = true;
-                }
-                selectable.targetPos = new Vector3(playerView.transform.position.x - 0.8f, playerView.transform.position.y, playerView.transform.position.z + 0.5f);
+                GameObject otherCard = GameObject.Find(player.cards[0]);
+                cardController = otherCard.GetComponent<CardController>();
+                cardController.targetPos = new Vector3(playerView.transform.position.x, playerView.transform.position.y, playerView.transform.position.z);
+                cardController.sortingOrder = 1;
             }
         }
         else
         {
-            foreach (var player in otherPlayers) { 
+            foreach (var player in otherPlayers) {
                 if (p.index == player.index) {
                     player.numCard--;
                     int index = player.mappedIndex;
                     GameObject newCard = Instantiate(playerCard);
                     newCard.name = p.card;
+                    CardController cardController = newCard.GetComponent<CardController>();
+
                     if (p.row < 4)
                     {
                         newCard.transform.position = new Vector3(otherCard[index].transform.position.x, otherCard[index].transform.position.y, otherCard[index].transform.position.z);
                         newCard.transform.localScale = new Vector3(newCard.transform.localScale.x * 0.6f, newCard.transform.localScale.y * 0.6f, newCard.transform.localScale.z);
-                        Selectable selectable = newCard.GetComponent<Selectable>();
-                        if (p.action == MessageHandler.PLAY)
-                        {
-                            selectable.lost = false;
-                            selectable.faceup = true;
-                            if (lastTopCard != "")
-                            {
-                                GameObject last = GameObject.Find(lastTopCard);
-                                Selectable sel = last.GetComponent<Selectable>();
-                                sel.lost = true;
-                            }
-                            lastTopCard = p.card;
-                        }
-                        else
-                        {
-                            selectable.lost = true;
-                            selectable.faceup = false;
-                        }
-                        float xOffset = -0.7f + (0.4f * (5 - player.numCard));
-                        float zOffset = 0.1f + (0.1f * (5 - player.numCard));
-                        selectable.sortingOrder = 5 - player.numCard;
-                        selectable.targetPos = new Vector3(playView[index].transform.position.x + xOffset, playView[index].transform.position.y, playView[index].transform.position.z + zOffset);
-                        Debug.Log("XXXXX" + selectable.targetPos);
-                        selectable.targetScale = new Vector3(newCard.transform.localScale.x * 1.34f, newCard.transform.localScale.y * 1.34f, newCard.transform.localScale.z);
                     }
-                    if (p.row == 4)
+                    else if (p.row == 4)
                     {
-                        newCard.transform.position = new Vector3(otherCard[index].transform.position.x, otherCard[index].transform.position.y, otherCard[index].transform.position.z + 1.0f);
-                        newCard.transform.localScale = new Vector3(newCard.transform.localScale.x * 0.8f, newCard.transform.localScale.y * 0.8f, newCard.transform.localScale.z);
-                        Selectable selectable = newCard.GetComponent<Selectable>();
-                        if (p.action == MessageHandler.PLAY)
-                        {
-                            selectable.lost = false;
-                            selectable.faceup = true;
-                            if (lastTopCard != "")
-                            {
-                                GameObject last = GameObject.Find(lastTopCard);
-                                Selectable sel = last.GetComponent<Selectable>();
-                                sel.lost = true;
-                            }
-                        }
-                        else
-                        {
-                            selectable.lost = true;
-                            selectable.faceup = true;
-                        }
-                        selectable.targetPos = new Vector3(playView[index].transform.position.x - 2.0f, playView[index].transform.position.y, playView[index].transform.position.z + 1.0f);
+                        newCard.transform.position = new Vector3(otherCard[index].transform.position.x, otherCard[index].transform.position.y, otherCard[index].transform.position.z);
+                        newCard.transform.localScale = new Vector3(newCard.transform.localScale.x * 0.6f, newCard.transform.localScale.y * 0.6f, newCard.transform.localScale.z);
                     }
-                    if (p.row == 5)
+                    else
                     {
-                        newCard.transform.position = new Vector3(playView[index].transform.position.x - 1.0f, playView[index].transform.position.y, playView[index].transform.position.z + 0.5f);
-                        newCard.transform.localScale = new Vector3(newCard.transform.localScale.x * 0.8f, newCard.transform.localScale.y * 0.8f, newCard.transform.localScale.z);
-                        Selectable selectable = newCard.GetComponent<Selectable>();
-                        if (p.action == MessageHandler.PLAY)
-                        {
-                            selectable.lost = false;
-                            selectable.faceup = true;
-                            if (lastTopCard != "")
-                            {
-                                GameObject last = GameObject.Find(lastTopCard);
-                                Selectable sel = last.GetComponent<Selectable>();
-                                sel.lost = true;
-                            }
-                        }
-                        else
-                        {
-                            selectable.lost = true;
-                            selectable.faceup = true;
-                        }
-                        selectable.targetPos = new Vector3(playView[index].transform.position.x - 1.3f, playView[index].transform.position.y, playView[index].transform.position.z + 0.5f);
+                        newCard.transform.position = new Vector3(playView[index].transform.position.x, playView[index].transform.position.y, playView[index].transform.position.z);
+                        newCard.transform.localScale = new Vector3(newCard.transform.localScale.x, newCard.transform.localScale.y, newCard.transform.localScale.z);
                     }
+
+                    Vector3 targetPos = Vector3.zero;
+                    Vector3 targetScale = Vector3.zero;
+                    int order = 0;
+                    if (p.row < 4)
+                    {
+                        int pos = 5 - player.numCard;
+                        float xOffset = -0.7f + (0.4f * pos);
+                        order = pos + 1;
+                        targetPos = new Vector3(playView[index].transform.position.x + xOffset, playView[index].transform.position.y, playView[index].transform.position.z);
+                        targetScale = new Vector3(newCard.transform.localScale.x * 1.34f, newCard.transform.localScale.y * 1.34f, newCard.transform.localScale.z);
+                    }
+                    else if (p.row == 4)
+                    {
+                        order = 10;
+                        targetPos = new Vector3(playView[index].transform.position.x, playView[index].transform.position.y, playView[index].transform.position.z);
+                        targetScale = new Vector3(newCard.transform.localScale.x * 1.67f, newCard.transform.localScale.y * 1.67f, newCard.transform.localScale.z);
+                    }
+                    else
+                    {
+                        order = 9;
+                        targetPos = new Vector3(playView[index].transform.position.x - 0.5f, playView[index].transform.position.y, playView[index].transform.position.z);
+                    }
+                    cardController.Action(p.action, p.row, order, targetPos, targetScale);
                 }
             }
         }
@@ -318,72 +272,49 @@ public class Catte : MonoBehaviour
         string userId = FindPlayerIdByIndex(turn);
         if (userId != "")
         {
-            Debug.Log(userId);
             GameObject obj = GameObject.Find(userId);
-            UserStatus status = obj.GetComponent<UserStatus>();
+            UserController status = obj.GetComponent<UserController>();
             status.isActive = true;
         }
+        if ((p.row == 4 && p.newRow == true && turn == player.index) || (p.row == 5 && turn == player.index))
+        {
+            StartCoroutine(PlayLastCard());
+            
+        }
+        
     }
 
     void RenderNewPlayer() {
         Player newPlayer = otherPlayers[otherPlayers.Count - 1];
         GameObject obj = Instantiate(userInfo);
-        obj.name = newPlayer.playerInfo.userId;
+        UserController userStatus = obj.GetComponent<UserController>();
         obj.transform.SetParent(canvas.transform, false);
         obj.transform.position = new Vector3(playerInfos[newPlayer.mappedIndex].transform.position.x, playerInfos[newPlayer.mappedIndex].transform.position.y, playerInfos[newPlayer.mappedIndex].transform.position.z);
-        Text[] child = obj.GetComponentsInChildren<Text>();
-        for (int i = 0; i < child.Length; i++)
-        {
-            if (child[i].name == "Username")
-            {
-                child[i].text = newPlayer.playerInfo.userId;
-            }
-            if (child[i].name == "Amount")
-            {
-                child[i].text = newPlayer.playerInfo.amount.ToString();
-            }
-        }
+        userStatus.SetInfo(newPlayer.playerInfo);
+        obj.name = newPlayer.playerInfo.userId;
+        StartCoroutine(ServiceClient.GetImageTexture(newPlayer.playerInfo.image, userStatus.SetTexture));
     }
 
     void RenderPlayers() {
         GameObject obj = Instantiate(userInfo);
+        UserController userStatus = obj.GetComponent<UserController>();
+        Debug.Log(player.playerInfo.userName);
         obj.name = player.playerInfo.userId;
         obj.transform.SetParent(canvas.transform, false);
         obj.transform.position = new Vector3(playerInfos[0].transform.position.x, playerInfos[0].transform.position.y, playerInfos[0].transform.position.z);
-        Text[] child = obj.GetComponentsInChildren<Text>();
-        for (int i = 0; i < child.Length; i++)
-        {
-            if (child[i].name == "Username")
-            {
-                child[i].text = player.playerInfo.userId;
-            }
-            if (child[i].name == "Amount")
-            {
-                child[i].text = player.playerInfo.amount.ToString();
-            }
-        }
-        
+        userStatus.SetInfo(player.playerInfo);
+        userStatus.SetTexture(GameData.currentPlayerImage);
 
         for (int i = 0; i < otherPlayers.Count; i++)
         {
-            Debug.Log("xxxxx");
             GameObject otherObj = Instantiate(userInfo);
-            UserStatus stt = otherObj.GetComponent<UserStatus>();
-            otherObj.name = otherPlayers[i].playerInfo.userId;
+            UserController stt = otherObj.GetComponent<UserController>();
+            
             otherObj.transform.SetParent(canvas.transform, false);
             otherObj.transform.position = new Vector3(playerInfos[otherPlayers[i].mappedIndex].transform.position.x, playerInfos[otherPlayers[i].mappedIndex].transform.position.y, playerInfos[otherPlayers[i].mappedIndex].transform.position.z);
-            Text[] otherChilds = otherObj.GetComponentsInChildren<Text>();
-            for (int j = 0; j < otherChilds.Length; j++)
-            {
-                if (otherChilds[j].name == "Username")
-                {
-                    otherChilds[j].text = otherPlayers[i].playerInfo.userId;
-                }
-                if (otherChilds[j].name == "Amount")
-                {
-                    otherChilds[j].text = otherPlayers[i].playerInfo.amount.ToString();
-                }
-            }
+            otherObj.name = otherPlayers[i].playerInfo.userId;
+            stt.SetInfo(otherPlayers[i].playerInfo);
+            StartCoroutine(ServiceClient.GetImageTexture(otherPlayers[i].playerInfo.image, stt.SetTexture));
         }
     }
 
@@ -402,16 +333,10 @@ public class Catte : MonoBehaviour
     public void OnJoin(List<Player> players) {
         otherPlayers.Clear();
         foreach(var p in players) {
-          
-            if (p.inGame == true)
-            {
-                //inGame = true;
-            }
-            if (p.playerInfo.userId == userId)
+            if (p.playerInfo.userId == playerInfo.userId)
             {
                 MessageHandler.SetIndex(p.index);
                 usedIndex.Add(p.index);
-                Debug.Log("JOINT");
                 player = p;
                 player.mappedIndex = 0;
             }
@@ -447,10 +372,24 @@ public class Catte : MonoBehaviour
 
     public void OnLeave(int index)
     {
-        string userId = FindPlayerIdByIndex(index);
-        GameObject obj = GameObject.Find(userId);
-        GameObject.Destroy(obj);
-        usedIndex.Remove(index);
+        if (index == player.index)
+        {
+            SceneManager.LoadSceneAsync("RoomScene");
+        }
+        else
+        {
+            for (int i = 0; i < otherPlayers.Count; i++)
+            {
+                if (otherPlayers[i].index == index)
+                {
+                    otherPlayers.RemoveAt(i);
+                    GameObject obj = GameObject.Find(otherPlayers[i].playerInfo.userId);
+                    GameObject.Destroy(obj);
+                    usedIndex.Remove(index);
+                    break;
+                }
+            }
+        }
     }
     
     private int MapIndex(int playerIndex, int otherPlayerIndex)
@@ -488,7 +427,7 @@ public class Catte : MonoBehaviour
         if (userId != "")
         {
             GameObject obj = GameObject.Find(userId);
-            UserStatus status = obj.GetComponent<UserStatus>();
+            UserController status = obj.GetComponent<UserController>();
             status.isActive = true;
         }
         lastTopCard = "";
@@ -528,10 +467,155 @@ public class Catte : MonoBehaviour
                 }
             }
         }
+        ShowEliminated();
     }
 
-    public void OnResultEvent() {
-    
+    void ShowEliminated()
+    {
+        if (player.finalist == false)
+        {
+            GameObject obj = Instantiate(eliminatedIndicator);
+            obj.transform.SetParent(canvas.transform, false);
+            obj.transform.position = playView[0].transform.position;
+
+        }
+        for (int i = 0; i < otherPlayers.Count; i++)
+        {
+            if (otherPlayers[i].finalist == false)
+            {
+                GameObject obj = Instantiate(eliminatedIndicator);
+                obj.transform.SetParent(canvas.transform, false);
+                obj.transform.position = playView[otherPlayers[i].mappedIndex].transform.position;
+            }
+        }
+    }
+
+    public void OnResult(List<ResultMsg> results) {
+        StartCoroutine(ShowResultAndClean(results));
+    }
+
+    IEnumerator ShowResultAndClean(List<ResultMsg> results)
+    {
+        yield return new WaitForSeconds(2);
+        for (int i = 0; i < results.Count; i++)
+        {
+            if (player.index == results[i].index)
+            {
+                if (results[i].change > 0)
+                {
+                    GameObject obj = Instantiate(otherIndicator);
+                    obj.transform.SetParent(canvas.transform, false);
+                    obj.transform.position = playerInfos[0].transform.position;
+                    IndicatorController controller = obj.GetComponent<IndicatorController>();
+                    controller.isAmount = false;
+                    controller.isWinner = true;
+                    controller.text = "NHAT";
+                }
+                else
+                {
+                    GameObject obj = Instantiate(otherIndicator);
+                    obj.transform.SetParent(canvas.transform, false);
+                    obj.transform.position = playerInfos[0].transform.position;
+                    IndicatorController controller = obj.GetComponent<IndicatorController>();
+                    controller.isAmount = false;
+                    controller.isWinner = false;
+                    controller.text = "BET";
+                }
+            }
+            else
+            {
+                for (int j = 0; j < otherPlayers.Count; j++)
+                {
+                    if (otherPlayers[j].index == results[i].index)
+                    {
+                        GameObject obj = Instantiate(otherIndicator);
+                        obj.transform.SetParent(canvas.transform, false);
+                        obj.transform.position = playerInfos[otherPlayers[j].mappedIndex].transform.position;
+                        IndicatorController controller = obj.GetComponent<IndicatorController>();
+                        if (results[i].change > 0)
+                        {
+                            controller.isAmount = false;
+                            controller.isWinner = true;
+                            controller.text = "NHAT";
+                        }
+                        else
+                        {
+                            controller.isAmount = false;
+                            controller.isWinner = false;
+                            controller.text = "BET";
+                        }
+                    }
+                }
+            }
+        }
+
+        yield return new WaitForSeconds(2);
+        for (int i = 0; i < results.Count; i++)
+        {
+            if(player.index == results[i].index)
+            {
+                GameObject obj = Instantiate(otherIndicator);
+                obj.transform.SetParent(canvas.transform, false);
+                obj.transform.position = new Vector3(playerInfos[0].transform.position.x + 0.5f, playerInfos[0].transform.position.y + 0.5f, playerInfos[0].transform.position.z);
+                IndicatorController controller = obj.GetComponent<IndicatorController>();
+                controller.isAmount = true;
+                if(results[i].change > 0)
+                {
+                    controller.isWinner = true;
+                }
+                else
+                {
+                    controller.isWinner = false;
+                }
+                controller.text = Converter.ConvertToMoney(results[i].change);
+            }
+            else
+            {
+                for (int j = 0; j < otherPlayers.Count; j++)
+                {
+                    if (otherPlayers[j].index == results[i].index)
+                    {
+                        GameObject obj = Instantiate(otherIndicator);
+                        obj.transform.SetParent(canvas.transform, false);
+                        float xOffset = 1.0f;
+                        float yOffset = 1.0f;
+                        if (otherPlayers[j].mappedIndex > 3)
+                        {
+                            xOffset = -1.0f;
+                        }
+                        obj.transform.position = new Vector3(playerInfos[otherPlayers[j].mappedIndex].transform.position.x + 0.5f, playerInfos[otherPlayers[j].mappedIndex].transform.position.y + 0.5f, playerInfos[otherPlayers[j].mappedIndex].transform.position.z);
+                        IndicatorController controller = obj.GetComponent<IndicatorController>();
+                        controller.isAmount = true;
+                        if (results[i].change > 0)
+                        {
+                            controller.isWinner = true;
+                        }
+                        else
+                        {
+                            controller.isWinner = false;
+                        }
+                        controller.text = Converter.ConvertToMoney(results[i].change);
+                    }
+                }
+            }
+        }
+
+        yield return new WaitForSeconds(2);
+        var cards = GameObject.FindGameObjectsWithTag("Card");
+        foreach (var card in cards)
+        {
+            Destroy(card);
+        }
+        var indicators = GameObject.FindGameObjectsWithTag("Indicator");
+        foreach (var indicator in indicators)
+        {
+            Destroy(indicator);
+        }
+    }
+
+    public void OnError(int error)
+    {
+
     }
 
     public int GetNext(int index)
@@ -550,7 +634,7 @@ public class Catte : MonoBehaviour
         bool cardSelected = false;
         foreach (var p in player.cards) {
             GameObject obj = GameObject.Find(p);
-            Selectable s = obj.GetComponent<Selectable>();
+            CardController s = obj.GetComponent<CardController>();
             if (p != cardname)
             {
                 if (s.selected == true) {
@@ -612,7 +696,7 @@ public class Catte : MonoBehaviour
         foreach (var p in player.cards)
         {
             GameObject obj = GameObject.Find(p);
-            Selectable s = obj.GetComponent<Selectable>();
+            CardController s = obj.GetComponent<CardController>();
             if (s.selected == true)
             {
                 s.selected = false;
@@ -629,7 +713,7 @@ public class Catte : MonoBehaviour
         foreach (var p in player.cards)
         {
             GameObject obj = GameObject.Find(p);
-            Selectable s = obj.GetComponent<Selectable>();
+            CardController s = obj.GetComponent<CardController>();
             if (s.selected == true)
             {
                 s.selected = false;
@@ -644,10 +728,8 @@ public class Catte : MonoBehaviour
     {
         string leftSuit = left.Substring(left.Length - 1, 1);
         string leftValue = left.Substring(0, left.Length - 1);
-        Debug.Log("YYYY" + leftSuit + " " + leftValue);
         string rightSuit = right.Substring(right.Length - 1, 1);
         string rightValue = right.Substring(0, right.Length - 1);
-        Debug.Log("AAAAA" + rightSuit + " " + rightValue);
         if (leftSuit != rightSuit)
         {
             return false;
@@ -658,4 +740,24 @@ public class Catte : MonoBehaviour
         }
         return false;
     }
+
+    IEnumerator PlayLastCard()
+    {
+        yield return new WaitForSeconds(1);
+        if (lastTopCard == "")
+        {
+            MessageHandler.Play(player.cards[0]);
+        }
+        else {
+            if (largerCard(player.cards[0], lastTopCard))
+            {
+                MessageHandler.Play(player.cards[0]);
+            }
+            else
+            {
+                MessageHandler.Fold(player.cards[0]);
+            }
+        }
+    }
+    
 }

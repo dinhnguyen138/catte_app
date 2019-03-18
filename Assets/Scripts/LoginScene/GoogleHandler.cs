@@ -3,41 +3,51 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Google;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class GoogleHandler : MonoBehaviour
 {
     public Text statusText;
     public Button signin;
+    public GameObject loadingPanel;
+    public Canvas canvas;
+    string token;
+    string id;
+    string username;
+    string image;
+    public Text loginErr;
 
-    public string webClientId = "701666008833-tjhusaaejdhlnl4dmpnifhgukeqqa1e6.apps.googleusercontent.com";
+    public string webClientId; 
 
     private GoogleSignInConfiguration configuration;
 
     // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
 
     private void Awake()
     {
+        webClientId = Setting.GetGoogleToken();
         configuration = new GoogleSignInConfiguration
         {
             WebClientId = webClientId,
             RequestIdToken = true
         };
+        canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
         signin.onClick.AddListener(OnSignIn);
     }
 
-    // Update is called once per frame
-    void Update()
+    private void OnApplicationQuit()
     {
-        
+        signin.onClick.RemoveAllListeners();
     }
 
     public void OnSignIn()
     {
+        loginErr.gameObject.SetActive(false);
+        GameObject loading = Instantiate(loadingPanel, new Vector3(0, 0), Quaternion.identity);
+        loading.transform.SetParent(canvas.transform, false);
+        loading.name = "LoadingScreen";
+
         GoogleSignIn.Configuration = configuration;
         GoogleSignIn.Configuration.UseGameSignIn = false;
         GoogleSignIn.Configuration.RequestIdToken = true;
@@ -65,14 +75,37 @@ public class GoogleHandler : MonoBehaviour
                     AddStatusText("Got Unexpected Exception?!?" + task.Exception);
                 }
             }
+            OnLoginFinish(true);
         }
         else if (task.IsCanceled)
         {
             AddStatusText("Canceled");
+            OnLoginFinish(true);
         }
         else
         {
             AddStatusText("Welcome: " + task.Result.DisplayName + "!");
+            AddStatusText(task.Result.ImageUrl.OriginalString);
+            StartCoroutine(ServiceClient.DoLogin3rd(task.Result.DisplayName,
+                task.Result.UserId,
+                "Google",
+                task.Result.IdToken,
+                task.Result.ImageUrl.OriginalString,
+                OnLoginFinish));
+        }
+    }
+
+    void OnLoginFinish(bool hasError)
+    {
+        GameObject loading = GameObject.Find("LoadingScreen");
+        GameObject.Destroy(loading);
+        if (hasError == true)
+        {
+            loginErr.gameObject.SetActive(true);
+        }
+        else
+        {
+            SceneManager.LoadSceneAsync("RoomScene");
         }
     }
 

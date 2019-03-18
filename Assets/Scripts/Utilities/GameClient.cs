@@ -19,12 +19,12 @@ public static class GameClient
     }
     private static byte[] recvBuffer = new byte[4096];
 
-    public static void Init()
+    public static void Init(string host)
     {
         tcpClient = new TcpClient();
         tcpClient.ReceiveBufferSize = 4096;
         tcpClient.SendBufferSize = 4096;
-        tcpClient.BeginConnect("35.186.159.58", 9999, new AsyncCallback(ClientConnect), tcpClient);
+        tcpClient.BeginConnect(host, 9999, new AsyncCallback(ClientConnect), tcpClient);
     }
 
     private static void ClientConnect(IAsyncResult ar)

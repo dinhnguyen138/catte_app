@@ -10,8 +10,8 @@ public static class PlayerPrefHandler
         PlayerPrefs.SetString(key, value);
     }
 
-    public static void LoadString(string key, ref string value)
+    public static string LoadString(string key)
     {
-        PlayerPrefs.GetString(key, value);
+        return PlayerPrefs.GetString(key, "");
     }
 }

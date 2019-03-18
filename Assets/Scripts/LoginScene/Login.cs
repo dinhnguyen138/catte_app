@@ -9,72 +9,112 @@ using UnityEngine.UI;
 public class Login : MonoBehaviour
 {
     public Button loginBtn;
+    public Button registerShowBtn;
     public Button registerBtn;
+    public GameObject loadingPanel;
+    public Canvas canvas;
+    Text loginErr;
+    Text registerErr;
     // Start is called before the first frame update
     void Start()
     {
         loginBtn.onClick.AddListener(handleLogin);
         registerBtn.onClick.AddListener(handleRegister);
+        registerShowBtn.onClick.AddListener(openRegister);
+        canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
+        loginErr = GameObject.Find("Error").GetComponent<Text>();
+        loginErr.gameObject.SetActive(false);
+        registerErr = GameObject.Find("Error1").GetComponent<Text>();
+        registerErr.gameObject.SetActive(false);
+        string token = PlayerPrefHandler.LoadString(PlayerPrefHandler.TOKEN);
+        Debug.Log(token);
+        if (token != "")
+        {
+            loginErr.gameObject.SetActive(false);
+            GameObject loading = Instantiate(loadingPanel, new Vector3(0, 0), Quaternion.identity);
+            loading.transform.SetParent(canvas.transform, false);
+            loading.name = "LoadingScreen";
+            StartCoroutine(ServiceClient.RefreshToken(token, OnRefreshFinish));
+        }
     }
 
-    // Update is called once per frame
-    void Update()
+    private void OnApplicationQuit()
     {
+        loginBtn.onClick.RemoveAllListeners();
+        registerShowBtn.onClick.RemoveAllListeners();
+        registerBtn.onClick.RemoveAllListeners();
     }
 
     private void handleLogin() {
+        loginErr.gameObject.SetActive(false);
+        GameObject loading = Instantiate(loadingPanel, new Vector3(0, 0), Quaternion.identity);
+        loading.transform.SetParent(canvas.transform, false);
+        loading.name = "LoadingScreen";
         GameObject usernameField = GameObject.Find("Username");
         GameObject passwordField = GameObject.Find("Password");
         string username = usernameField.GetComponent<InputField>().text;
         string password = passwordField.GetComponent<InputField>().text;
-        StartCoroutine(DoLogin(username, password));
+        StartCoroutine(ServiceClient.DoLogin(username, password, OnLoginFinish));
     }
 
-    private void handleRegister() {
-        GameObject usernameField = GameObject.Find("Username1");
-        GameObject passwordField = GameObject.Find("Password1");
-        string username = usernameField.GetComponent<InputField>().text;
-        string password = passwordField.GetComponent<InputField>().text;
-        StartCoroutine(DoRegister(username, password));
-    }
-
-    IEnumerator DoLogin(string username, string password)
+    void OnLoginFinish(bool error)
     {
-        string jsonData = "";
-        jsonData = "{Username:\"" + username + "\",Password:\"" + password + "\"}";
-        UnityWebRequest request = UnityWebRequest.Post("localhost:8080/login", jsonData);
-        request.SetRequestHeader("Content-Type", "application/json");
-        yield return request.SendWebRequest();
-
-        if (request.isNetworkError || request.isHttpError)
+        GameObject loading = GameObject.Find("LoadingScreen");
+        GameObject.Destroy(loading);
+        if (error == true)
         {
-            Debug.Log(request.error);
+            loginErr.gameObject.SetActive(true);
         }
         else
         {
-            string token = request.downloadHandler.text;
-            SignInResult result = JsonConvert.DeserializeObject<SignInResult>(token);
-            PlayerPrefHandler.SaveString(PlayerPrefHandler.TOKEN, result.token);
             SceneManager.LoadSceneAsync("RoomScene");
         }
     }
 
-    IEnumerator DoRegister(string username, string password)
+    private void openRegister()
     {
-        string jsonData = "";
-        jsonData = "{Username:\"" + username + "\",Password:\"" + password + "\"}";
-        UnityWebRequest request = UnityWebRequest.Post("localhost:8080/register", jsonData);
-        request.SetRequestHeader("Content-Type", "application/json");
-        yield return request.SendWebRequest();
+        RegisterController controller = GameObject.Find("RegisterPage").GetComponent<RegisterController>();
+        controller.show = true;
+    }
 
-        if (request.isNetworkError || request.isHttpError)
+    private void handleRegister() {
+        registerErr.gameObject.SetActive(false);
+        GameObject loading = Instantiate(loadingPanel, new Vector3(0, 0), Quaternion.identity);
+        loading.transform.SetParent(canvas.transform, false);
+        loading.name = "LoadingScreen";
+        GameObject usernameField = GameObject.Find("Username1");
+        GameObject passwordField = GameObject.Find("Password1");
+        string username = usernameField.GetComponent<InputField>().text;
+        string password = passwordField.GetComponent<InputField>().text;
+        StartCoroutine(ServiceClient.DoRegister(username, password, OnRegisterFinish));
+    }
+
+    void OnRegisterFinish(bool error)
+    {
+        GameObject loading = GameObject.Find("LoadingScreen");
+        GameObject.Destroy(loading);
+        if (error == true)
         {
-            Debug.Log(request.error);
+            registerErr.gameObject.SetActive(true);
         }
         else
         {
-
+            RegisterController registerController = GameObject.Find("RegisterPage").GetComponent<RegisterController>();
+            registerController.show = false;
         }
+    }
 
+    void OnRefreshFinish(bool hasError)
+    {
+        GameObject loading = GameObject.Find("LoadingScreen");
+        GameObject.Destroy(loading);
+        if (hasError == true)
+        {
+            loginErr.gameObject.SetActive(true);
+        }
+        else
+        {
+            SceneManager.LoadSceneAsync("RoomScene");
+        }
     }
 }

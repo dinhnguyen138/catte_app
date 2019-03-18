@@ -15,7 +15,8 @@ static class MessageHandler
     public delegate void OnPlay(PlayData play);
     public delegate void OnStart(int index);
     public delegate void OnEliminated(List<int> disqualifiers);
-    public delegate void OnResult();
+    public delegate void OnError(int error);
+    public delegate void OnResult(List<ResultMsg> results);
     public static event OnJoin OnJoinEvent;
     public static event OnNewPlayer OnNewPlayerEvent;
     public static event OnLeave OnLeaveEvent;
@@ -23,6 +24,7 @@ static class MessageHandler
     public static event OnPlay OnPlayEvent;
     public static event OnStart OnStartEvent;
     public static event OnEliminated OnEliminatedEvent;
+    public static event OnError OnErrorEvent;
     public static event OnResult OnResultEvent;
 
     public const string JOIN = "JOIN";
@@ -33,7 +35,8 @@ static class MessageHandler
     public const string CARDS = "CARDS";
     public const string ELIMINATED = "ELIMINATED";
     public const string START = "START";
-    public const string WINNER = "WINNER";
+    public const string RESULT = "RESULT";
+    public const string ERROR = "ERROR";
     public const string PLAY = "PLAY";
     public const string FOLD = "FOLD";
     private static string room;
@@ -94,13 +97,20 @@ static class MessageHandler
                 OnPlayEvent(playData);
                 break;
             case START:
-                string id = JsonConvert.DeserializeObject<string>(command.data);
                 OnStartEvent(Convert.ToInt32(command.data));
                 break;
             case ELIMINATED:
                 List<int> disqualifiers = JsonConvert.DeserializeObject<List<int>>(command.data);
                 OnEliminatedEvent(disqualifiers);
-                break; 
+                break;
+            case ERROR:
+                int error = Convert.ToInt32(command.data);
+                OnErrorEvent(error);
+                break;
+            case RESULT:
+                List<ResultMsg> results = JsonConvert.DeserializeObject<List<ResultMsg>>(command.data);
+                OnResultEvent(results);
+                break;
             default:
                 Debug.Log("Received unhandled event " + command.action);
                 break;
