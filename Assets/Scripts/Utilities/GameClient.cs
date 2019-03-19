@@ -11,7 +11,9 @@ using UnityEngine;
 public static class GameClient
 {
     public delegate void OnConnect();
+    public delegate void OnDisconnect();
     public static event OnConnect OnConnectEvent;
+    public static event OnDisconnect OnDisconnectEvent;
     private static TcpClient tcpClient;
     private static SslStream stream;
     private static byte[] recvBuffer = new byte[4096];
@@ -29,6 +31,7 @@ public static class GameClient
         tcpClient.EndConnect(ar);
         if (tcpClient.Connected == false)
         {
+            OnDisconnectEvent();
             return;
         }
         else
@@ -54,7 +57,7 @@ public static class GameClient
             int length = stream.EndRead(ar);
             if (length < 0)
             {
-                // Disconnected
+                OnDisconnectEvent();
                 return;
             }
             byte[] buffer = new byte[length];

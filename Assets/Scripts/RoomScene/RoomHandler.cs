@@ -15,6 +15,15 @@ public class RoomHandler : MonoBehaviour
     public Button searchRoom;
     public Button refresh;
 
+
+    public static Dictionary<long, List<long>> listAmount = new Dictionary<long, List<long>> {
+        {50000, new List<long> {3000, 5000, 10000}},
+        {100000, new List<long> {5000, 10000, 20000, 50000}},
+        {1000000, new List<long> {100000, 200000, 500000}},
+        {50000000, new List<long> {1000000, 2000000, 5000000, 10000000}},
+        {500000000, new List<long> {5000000, 10000000, 20000000, 50000000, 100000000, 200000000}}
+    };
+
     // Start is called before the first frame update
     void Start()
     {
@@ -128,11 +137,32 @@ public class RoomHandler : MonoBehaviour
 
     public void OnCreateRoom() {
         // Show create room dialog
+        long amount = 0;
+        foreach (var item in listAmount)
+        {
+            if(item.Key <= amount)
+            {
+                amount = item.Key;
+            }
+            else
+            {
+                break;
+            }
+        }
+        if (amount == 0)
+        {
+            // Show Dialog that user don't have enough money to create room
+        }
+        else
+        {
+            // Create Dialog
+            // Set Dialog Slider with listAmount[amount]
+        }
     }
 
     public void OnQuickJoin() {
         // Start coroutine quick find room
-        StartCoroutine(ServiceClient.QuickJoin(OnRoomFound))
+        StartCoroutine(ServiceClient.QuickJoin(OnRoomFound));
     }
 
     public void OnClearText()

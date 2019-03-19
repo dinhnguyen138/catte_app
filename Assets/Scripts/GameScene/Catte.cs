@@ -13,9 +13,11 @@ public class Catte : MonoBehaviour
     private PlayerInfo playerInfo;
     private RoomInfo roomInfo;
     private bool inGame = false;
+    private bool requestLeave = false;
     private int row = -1;
     private int turn = -1;
     private string lastTopCard = "";
+    private int reconnectRetry = 0;
 
     public Sprite[] cards;
     public GameObject playerCard;
@@ -26,10 +28,14 @@ public class Catte : MonoBehaviour
     public GameObject[] playView;
     public GameObject[] otherCard;
     public GameObject[] playerInfos;
+    public GameObject disconnectAlert;
     public Button startButton;
     public Button foldButton;
     public Button playButton;
-    public Canvas canvas;
+    public Button exitRoom;
+    public Button retryConnect;
+    public Button leaveRoom;
+    Canvas canvas;
 
     private Player player;
     private List<Player> otherPlayers;
@@ -64,6 +70,7 @@ public class Catte : MonoBehaviour
         otherPlayers = new List<Player>();
 
         GameClient.OnConnectEvent += OnConnect;
+        GameClient.OnDisconnectEvent += OnDisconnect;
         if (roomInfo.host == "")
         {
             roomInfo.host = Setting.GetHost();
@@ -79,6 +86,7 @@ public class Catte : MonoBehaviour
         MessageHandler.OnEliminatedEvent += OnEliminated;
         MessageHandler.OnErrorEvent += OnError;
         MessageHandler.OnResultEvent += OnResult;
+        MessageHandler.OnInformEvent += OnInform;
         MessageHandler.Init(roomInfo.roomid, playerInfo.userId);
 
         startButton.gameObject.SetActive(false);
@@ -87,7 +95,17 @@ public class Catte : MonoBehaviour
         playButton.onClick.AddListener(PlayCard);
         foldButton.gameObject.SetActive(false);
         foldButton.onClick.AddListener(FoldCard);
+        exitRoom.onClick.AddListener(ExitRequest);
+        retryConnect.onClick.AddListener(() => {
+            disconnectAlert.SetActive(false);
+            GameClient.Init(roomInfo.host);
+        });
+        leaveRoom.onClick.AddListener(() => { SceneManager.LoadSceneAsync("RoomScene"); });
         canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
+
+        GameObject inform = GameObject.Find("Inform");
+        inform.SetActive(false);
+        disconnectAlert.SetActive(false);
     }
 
     private void Start()
@@ -103,6 +121,7 @@ public class Catte : MonoBehaviour
     public void OnApplicationQuit()
     {
         GameClient.OnConnectEvent -= OnConnect;
+        GameClient.OnDisconnectEvent -= OnDisconnect;
         MessageHandler.OnNewPlayerEvent -= OnNewPlayer;
         MessageHandler.OnLeaveEvent -= OnLeave;
         MessageHandler.OnJoinEvent -= OnJoin;
@@ -112,13 +131,17 @@ public class Catte : MonoBehaviour
         MessageHandler.OnEliminatedEvent -= OnEliminated;
         MessageHandler.OnErrorEvent -= OnError;
         MessageHandler.OnResultEvent -= OnResult;
+        MessageHandler.OnInformEvent -= OnInform;
         GameClient.Disconnect();
 
         startButton.onClick.RemoveAllListeners();
         playButton.gameObject.SetActive(false);
         playButton.onClick.RemoveAllListeners();
-        foldButton.onClick.RemoveAllListeners();
         foldButton.gameObject.SetActive(false);
+        foldButton.onClick.RemoveAllListeners();
+        exitRoom.onClick.RemoveAllListeners();
+        retryConnect.onClick.RemoveAllListeners();
+        leaveRoom.onClick.RemoveAllListeners();
     }
 
     public void RenderCards() {
@@ -143,6 +166,7 @@ public class Catte : MonoBehaviour
     }
 
     public void RenderPlays(PlayData p) {
+
         // Update the current row's topcard status
         if (p.action == MessageHandler.PLAY)
         {
@@ -326,8 +350,27 @@ public class Catte : MonoBehaviour
 
     public void OnConnect()
     {
+        WifiController wifi = GameObject.Find("Wifi").GetComponent<WifiController>();
+        wifi.Connected();
+        reconnectRetry = 0;
         Debug.Log("Server Connected");
         MessageHandler.JoinRoom(playerInfo);
+    }
+
+    public void OnDisconnect()
+    {
+        WifiController wifi = GameObject.Find("Wifi").GetComponent<WifiController>();
+        wifi.Disconnected();
+        reconnectRetry++;
+        if (reconnectRetry <= 3)
+        {
+            GameClient.Init(roomInfo.host);
+        }
+        else
+        {
+            //TODO: Show disconnect dialog. Leave + retry option
+            disconnectAlert.SetActive(true);
+        }
     }
 
     public void OnJoin(List<Player> players) {
@@ -352,10 +395,6 @@ public class Catte : MonoBehaviour
             otherPlayers[i].mappedIndex = MapIndex(player.index, otherPlayers[i].index);
         }
 
-        if (!inGame && otherPlayers.Count != 0)
-        {
-            startButton.gameObject.SetActive(true);
-        }
         RenderPlayers();
     }
 
@@ -363,31 +402,32 @@ public class Catte : MonoBehaviour
         newPlayer.mappedIndex = MapIndex(player.index, newPlayer.index);
         otherPlayers.Add(newPlayer);
         usedIndex.Add(newPlayer.index);
-        if (!inGame && otherPlayers.Count != 0)
-        {
-            startButton.gameObject.SetActive(true);
-        }
         RenderNewPlayer();
     }
 
-    public void OnLeave(int index)
+    public void OnLeave(LeaveMsg msg)
     {
-        if (index == player.index)
+        if (msg.index == player.index)
         {
             SceneManager.LoadSceneAsync("RoomScene");
+            return;
         }
-        else
+        if (msg.host == player.index)
         {
-            for (int i = 0; i < otherPlayers.Count; i++)
+            player.isHost = true;
+        }
+        for (int i = 0; i < otherPlayers.Count; i++)
+        {
+            if (otherPlayers[i].index == msg.index)
             {
-                if (otherPlayers[i].index == index)
-                {
-                    otherPlayers.RemoveAt(i);
-                    GameObject obj = GameObject.Find(otherPlayers[i].playerInfo.userId);
-                    GameObject.Destroy(obj);
-                    usedIndex.Remove(index);
-                    break;
-                }
+                otherPlayers.RemoveAt(i);
+                GameObject obj = GameObject.Find(otherPlayers[i].playerInfo.userId);
+                GameObject.Destroy(obj);
+                usedIndex.Remove(msg.index);
+            }
+            if (otherPlayers[i].index == msg.host)
+            {
+                otherPlayers[i].isHost = true;
             }
         }
     }
@@ -406,6 +446,7 @@ public class Catte : MonoBehaviour
     } 
 
     public void OnCards(List<string> cards) {
+        // Hide countdown
         player.cards = cards;
         player.numCard = MAXCARD;
         foreach(var p in otherPlayers) {
@@ -611,6 +652,14 @@ public class Catte : MonoBehaviour
         {
             Destroy(indicator);
         }
+
+        if(requestLeave == true)
+        {
+            yield return new WaitForSeconds(1);
+            MessageHandler.LeaveRoom();
+            SceneManager.LoadSceneAsync("RoomScene");
+
+        }
     }
 
     public void OnError(int error)
@@ -759,5 +808,47 @@ public class Catte : MonoBehaviour
             }
         }
     }
-    
+
+    public void ExitRequest() {
+        if (inGame == true)
+        {
+            if (requestLeave == false)
+            {
+                // Show dialog to indicate that we will turn on leave request
+                requestLeave = true;
+            }
+            else {
+                // Show dialog to indicate that we will turn on leave request
+                requestLeave = false;
+            }
+        }
+        else
+        {
+            MessageHandler.LeaveRoom();
+            SceneManager.LoadSceneAsync("RoomScene");
+        }
+    }
+
+    public void OnInform() {
+        // Show inform countdown
+        if (player.isHost)
+        {
+            startButton.gameObject.SetActive(true);
+        }
+        StartCoroutine(ShowCountdown());
+    }
+
+    IEnumerator ShowCountdown()
+    {
+        GameObject inform = GameObject.Find("Inform");
+        inform.SetActive(true);
+        Text informMsg = inform.GetComponent<Text>();
+        for (int i = 15; i > 0; i++)
+        {
+            informMsg.text = "Ván đấu sẽ được bắt đầu sau " + i.ToString() + " giây";
+            yield return new WaitForSeconds(1);
+        }
+
+        inform.SetActive(false);
+    }
 }

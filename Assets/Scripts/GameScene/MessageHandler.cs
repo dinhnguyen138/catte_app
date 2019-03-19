@@ -10,12 +10,13 @@ static class MessageHandler
 {
     public delegate void OnJoin(List<Player> players);
     public delegate void OnNewPlayer(Player player);
-    public delegate void OnLeave(int index);
+    public delegate void OnLeave(LeaveMsg msg);
     public delegate void OnCards(List<string> cards);
     public delegate void OnPlay(PlayData play);
     public delegate void OnStart(int index);
     public delegate void OnEliminated(List<int> disqualifiers);
     public delegate void OnError(int error);
+    public delegate void OnInform();
     public delegate void OnResult(List<ResultMsg> results);
     public static event OnJoin OnJoinEvent;
     public static event OnNewPlayer OnNewPlayerEvent;
@@ -25,6 +26,7 @@ static class MessageHandler
     public static event OnStart OnStartEvent;
     public static event OnEliminated OnEliminatedEvent;
     public static event OnError OnErrorEvent;
+    public static event OnInform OnInformEvent;
     public static event OnResult OnResultEvent;
 
     public const string JOIN = "JOIN";
@@ -37,6 +39,7 @@ static class MessageHandler
     public const string START = "START";
     public const string RESULT = "RESULT";
     public const string ERROR = "ERROR";
+    public const string INFORM = "INFORM";
     public const string PLAY = "PLAY";
     public const string FOLD = "FOLD";
     private static string room;
@@ -84,7 +87,8 @@ static class MessageHandler
                 OnNewPlayerEvent(player);
                 break;
             case LEAVE:
-                OnLeaveEvent(Convert.ToInt32(command.data));
+                LeaveMsg msg = JsonConvert.DeserializeObject<LeaveMsg>(command.data);
+                OnLeaveEvent(msg);
                 break;
             case CARDS:
                 List<string> cards = JsonConvert.DeserializeObject<List<string>>(command.data);
@@ -106,6 +110,9 @@ static class MessageHandler
             case ERROR:
                 int error = Convert.ToInt32(command.data);
                 OnErrorEvent(error);
+                break;
+            case INFORM:
+                OnInformEvent();
                 break;
             case RESULT:
                 List<ResultMsg> results = JsonConvert.DeserializeObject<List<ResultMsg>>(command.data);
@@ -169,6 +176,16 @@ static class MessageHandler
         command.room = room;
         command.index = index;
         command.data = card;
+        string sendData = JsonConvert.SerializeObject(command) + "\n";
+        GameClient.Send(System.Text.Encoding.UTF8.GetBytes(sendData));
+    }
+
+    public static void LeaveRoom()
+    {
+        SendCommand command = new SendCommand();
+        command.action = LEAVE;
+        command.room = room;
+        command.index = index;
         string sendData = JsonConvert.SerializeObject(command) + "\n";
         GameClient.Send(System.Text.Encoding.UTF8.GetBytes(sendData));
     }

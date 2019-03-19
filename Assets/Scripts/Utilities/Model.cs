@@ -139,3 +139,12 @@ public class ResultMsg {
     [JsonProperty("amount")]
     public System.Int64 amount;
 }
+
+public class LeaveMsg
+{
+    [JsonProperty("index")]
+    public int index;
+
+    [JsonProperty("host")]
+    public int host;
+}
