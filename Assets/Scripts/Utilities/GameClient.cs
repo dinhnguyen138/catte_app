@@ -2,7 +2,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using UnityEngine;
 
 public static class GameClient
@@ -10,13 +13,7 @@ public static class GameClient
     public delegate void OnConnect();
     public static event OnConnect OnConnectEvent;
     private static TcpClient tcpClient;
-    private static NetworkStream stream
-    {
-        get
-        {
-            return tcpClient.GetStream();
-        }
-    }
+    private static SslStream stream;
     private static byte[] recvBuffer = new byte[4096];
 
     public static void Init(string host)
@@ -36,6 +33,13 @@ public static class GameClient
         }
         else
         {
+            stream = new SslStream(
+                tcpClient.GetStream(),
+                false,
+                new RemoteCertificateValidationCallback(ValidateServerCertificate),
+                null
+            );
+            stream.AuthenticateAsClient("");
             tcpClient.NoDelay = false;
             OnConnectEvent();
             stream.BeginRead(recvBuffer, 0, recvBuffer.Length, ClientReceive, null);
@@ -80,5 +84,15 @@ public static class GameClient
         {
             tcpClient.Close();
         }
+    }
+
+    // TODO: Cheat to bypass untrusted certificate, can remove this on production
+    public static bool ValidateServerCertificate(
+          object sender,
+          X509Certificate certificate,
+          X509Chain chain,
+          SslPolicyErrors sslPolicyErrors)
+    {
+        return true;
     }
 }

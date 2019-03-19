@@ -14,4 +14,9 @@ public static class PlayerPrefHandler
     {
         return PlayerPrefs.GetString(key, "");
     }
+
+    public static void Delete(string key)
+    {
+        PlayerPrefs.DeleteKey(key);
+    }
 }
