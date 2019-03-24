@@ -245,7 +245,7 @@ MonoBehaviour:
   isActive: 0
   eliminated: 0
   percentage: 0
-  speed: 30
+  speed: 11
 --- !u!1 &3033684402723624204
 GameObject:
   m_ObjectHideFlags: 0

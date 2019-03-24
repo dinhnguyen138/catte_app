@@ -5,7 +5,32 @@ using UnityEngine.UI;
 
 public class RoomItemHandler : MonoBehaviour
 {
-    public RoomInfo roomInfo;
+    public RoomInfo roomInfo
+    {
+        set
+        {
+            roomId.text = value.roomid;
+            roomName.text = "Ai ma biet";
+            roomAmount.text = Converter.ConvertToMoney(value.amount);
+            int i = 0;
+            while (i < value.maxplayer)
+            {
+                GameObject obj = Instantiate(playerItem);
+                obj.name = i.ToString();
+                obj.transform.SetParent(playerList.transform, false);
+                Image image = obj.GetComponent<Image>();
+                if (i < value.numplayer)
+                {
+                    image.sprite = statusSprite[0];
+                }
+                else
+                {
+                    image.sprite = statusSprite[1];
+                }
+                i++;
+            }
+        }
+    }
     public GameObject playerItem;
     public Text roomId;
     public Text roomName;
@@ -28,36 +53,12 @@ public class RoomItemHandler : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (roomInfo != null)
-        {
-            roomId.text = roomInfo.roomid;
-            roomName.text = "Ai ma biet";
-            roomAmount.text = roomInfo.amount.ToString();
-            int i = 0;
-            while (i < roomInfo.maxplayer)
-            {
-                GameObject obj = Instantiate(playerItem);
-                obj.name = i.ToString();
-                obj.transform.SetParent(playerList.transform, false);
-                Image image = obj.GetComponent<Image>();
-                if (i < roomInfo.numplayer)
-                {
-                    image.sprite = statusSprite[0];
-                }
-                else
-                {
-                    image.sprite = statusSprite[1];   
-                }
-                i++;
-            }
-        }
     }
 
     void OnClick()
     {
         Debug.Log("Click" + this.name);
-        int index = int.Parse(this.name);
         RoomHandler handler = FindObjectOfType<RoomHandler>();
-        handler.OnRoomChoose(index);
+        handler.OnRoomChoose(this.name);
     }
 }

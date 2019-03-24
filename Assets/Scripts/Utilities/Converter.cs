@@ -26,7 +26,13 @@ static class Converter
             viewType = "K";
         }
 
-        string ret = string.Format("${0:0.00}{1}", viewValue, viewType);
+        string ret = string.Format("${0:#,#.##}{1}", viewValue, viewType);
+        return ret;
+    }
+
+    public static string ConvertToMoneyBasic(long amount)
+    {
+        string ret = string.Format("${0:0,0", amount);
         return ret;
     }
 }

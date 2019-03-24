@@ -10,7 +10,7 @@ using UnityEngine.Networking;
 
 static class ServiceClient
 {
-    static string host = Setting.GetHost();
+    static string host = Setting.GetServiceHost();
     public static IEnumerator DoLogin(string username, string password, System.Action<bool> onLoginFinish)
     {
         LoginRegister login = new LoginRegister();
@@ -143,6 +143,40 @@ static class ServiceClient
             string info = request.downloadHandler.text;
             Debug.Log(info);
             List<RoomInfo> result = JsonConvert.DeserializeObject<List<RoomInfo>>(info);
+            onFinish(result);
+        }
+    }
+
+    public static IEnumerator CreateRoom(long amount, int number, System.Action<RoomInfo> onFinish)
+    {
+        CreateRoomMsg msg = new CreateRoomMsg();
+        msg.amount = amount;
+        msg.maxPlayer = number;
+        string data = JsonConvert.SerializeObject(msg);
+
+        UnityWebRequest request = UnityWebRequest.Post(host + "/create-room", "");
+        request.SetRequestHeader("Content-Type", "application/json");
+        request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefHandler.LoadString(PlayerPrefHandler.TOKEN));
+
+        if (data != null)
+        {
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(data);
+
+            UploadHandlerRaw upHandler = new UploadHandlerRaw(bytes);
+            upHandler.contentType = "application/json";
+            request.uploadHandler = upHandler;
+        }
+        yield return request.SendWebRequest();
+
+        if (request.isNetworkError || request.isHttpError)
+        {
+            onFinish(null);
+        }
+        else
+        {
+            string info = request.downloadHandler.text;
+            Debug.Log(info);
+            RoomInfo result = JsonConvert.DeserializeObject<RoomInfo>(info);
             onFinish(result);
         }
     }

@@ -18,6 +18,7 @@ public class Catte : MonoBehaviour
     private int turn = -1;
     private string lastTopCard = "";
     private int reconnectRetry = 0;
+    private bool moveTimeout = false;
 
     public Sprite[] cards;
     public GameObject playerCard;
@@ -29,16 +30,19 @@ public class Catte : MonoBehaviour
     public GameObject[] otherCard;
     public GameObject[] playerInfos;
     public GameObject disconnectAlert;
+    public GameObject wifi;
+    public GameObject inform;
     public Button startButton;
     public Button foldButton;
     public Button playButton;
     public Button exitRoom;
     public Button retryConnect;
     public Button leaveRoom;
-    Canvas canvas;
+    public Canvas canvas;
 
     private Player player;
     private List<Player> otherPlayers;
+    private bool isConnected;
 
     private List<int> usedIndex = new List<int>();
     public Dictionary<string, int> valueMap = new Dictionary<string, int>() {
@@ -60,6 +64,12 @@ public class Catte : MonoBehaviour
     // Start is called before the first frame update
     void Awake()
     {
+        Debug.Log("XXXX");
+    }
+
+    private void Start()
+    {
+        Debug.Log("OnStart");
         playerInfo = GameData.currentPlayer;
         roomInfo = GameData.currentRoom;
         Text room = GameObject.Find("Room Id").GetComponent<Text>();
@@ -68,13 +78,10 @@ public class Catte : MonoBehaviour
         amount.text = Converter.ConvertToMoney(roomInfo.amount);
         player = null;
         otherPlayers = new List<Player>();
+        isConnected = false;
 
         GameClient.OnConnectEvent += OnConnect;
         GameClient.OnDisconnectEvent += OnDisconnect;
-        if (roomInfo.host == "")
-        {
-            roomInfo.host = Setting.GetHost();
-        }
         GameClient.Init(roomInfo.host);
 
         MessageHandler.OnJoinEvent += OnJoin;
@@ -98,28 +105,45 @@ public class Catte : MonoBehaviour
         exitRoom.onClick.AddListener(ExitRequest);
         retryConnect.onClick.AddListener(() => {
             disconnectAlert.SetActive(false);
-            GameClient.Init(roomInfo.host);
+            reconnectRetry = 0;
+            GameClient.Connect();
         });
-        leaveRoom.onClick.AddListener(() => { SceneManager.LoadSceneAsync("RoomScene"); });
-        canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
+        leaveRoom.onClick.AddListener(() => {
+            GameClient.Disconnect();
+            SceneManager.LoadSceneAsync("RoomScene");
+        });
 
         GameObject inform = GameObject.Find("Inform");
         inform.SetActive(false);
         disconnectAlert.SetActive(false);
-    }
-
-    private void Start()
-    {
+        inform.SetActive(false);
+        canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
+        GameClient.Connect();
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (isConnected)
+        {
+            wifi.SetActive(false);
+        }
+        else
+        {
+            wifi.SetActive(true);
+            WifiController wifiController = wifi.GetComponent<WifiController>();
+            wifiController.setRetry(reconnectRetry);
+            if (reconnectRetry == 3)
+            {
+                disconnectAlert.SetActive(true);
+            }
+        }
         MessageHandler.ProcessMessage();
     }
 
-    public void OnApplicationQuit()
+    public void OnDisable()
     {
+        Debug.Log("Disable");
         GameClient.OnConnectEvent -= OnConnect;
         GameClient.OnDisconnectEvent -= OnDisconnect;
         MessageHandler.OnNewPlayerEvent -= OnNewPlayer;
@@ -135,13 +159,16 @@ public class Catte : MonoBehaviour
         GameClient.Disconnect();
 
         startButton.onClick.RemoveAllListeners();
-        playButton.gameObject.SetActive(false);
         playButton.onClick.RemoveAllListeners();
-        foldButton.gameObject.SetActive(false);
         foldButton.onClick.RemoveAllListeners();
         exitRoom.onClick.RemoveAllListeners();
         retryConnect.onClick.RemoveAllListeners();
         leaveRoom.onClick.RemoveAllListeners();
+    }
+
+    public void OnApplicationQuit()
+    {
+        GameClient.Disconnect();
     }
 
     public void RenderCards() {
@@ -166,6 +193,14 @@ public class Catte : MonoBehaviour
     }
 
     public void RenderPlays(PlayData p) {
+        string userId = FindPlayerIdByIndex(turn);
+        if (userId != "")
+        {
+            GameObject obj = GameObject.Find(userId);
+            UserController status = obj.GetComponent<UserController>();
+            status.isActive = false;
+        }
+        OnClickCard("");
 
         // Update the current row's topcard status
         if (p.action == MessageHandler.PLAY)
@@ -293,19 +328,22 @@ public class Catte : MonoBehaviour
             row = p.row;
         }
         turn = p.nextTurn;
-        string userId = FindPlayerIdByIndex(turn);
-        if (userId != "")
+        string newUserId = FindPlayerIdByIndex(turn);
+        if (p.row < 5 && newUserId != "")
         {
-            GameObject obj = GameObject.Find(userId);
+            GameObject obj = GameObject.Find(newUserId);
             UserController status = obj.GetComponent<UserController>();
             status.isActive = true;
         }
+        
         if ((p.row == 4 && p.newRow == true && turn == player.index) || (p.row == 5 && turn == player.index))
         {
             StartCoroutine(PlayLastCard());
-            
         }
-        
+        else if (turn == player.index)
+        {
+            moveTimeout = false;
+        }
     }
 
     void RenderNewPlayer() {
@@ -344,14 +382,14 @@ public class Catte : MonoBehaviour
 
     public void StartGame() {
         startButton.gameObject.SetActive(false);
+        inform.SetActive(false);
         Debug.Log("StartGame");
         MessageHandler.Deal();
     }
 
     public void OnConnect()
     {
-        WifiController wifi = GameObject.Find("Wifi").GetComponent<WifiController>();
-        wifi.Connected();
+        isConnected = true;
         reconnectRetry = 0;
         Debug.Log("Server Connected");
         MessageHandler.JoinRoom(playerInfo);
@@ -359,18 +397,13 @@ public class Catte : MonoBehaviour
 
     public void OnDisconnect()
     {
-        WifiController wifi = GameObject.Find("Wifi").GetComponent<WifiController>();
-        wifi.Disconnected();
+        Debug.Log("Server Disconnected");
+        isConnected = false;
+        if (reconnectRetry < 3)
+        {
+            GameClient.Connect();
+        }
         reconnectRetry++;
-        if (reconnectRetry <= 3)
-        {
-            GameClient.Init(roomInfo.host);
-        }
-        else
-        {
-            //TODO: Show disconnect dialog. Leave + retry option
-            disconnectAlert.SetActive(true);
-        }
     }
 
     public void OnJoin(List<Player> players) {
@@ -446,7 +479,9 @@ public class Catte : MonoBehaviour
     } 
 
     public void OnCards(List<string> cards) {
+        inGame = true;
         // Hide countdown
+        inform.SetActive(false);
         player.cards = cards;
         player.numCard = MAXCARD;
         foreach(var p in otherPlayers) {
@@ -532,12 +567,20 @@ public class Catte : MonoBehaviour
     }
 
     public void OnResult(List<ResultMsg> results) {
+        
         StartCoroutine(ShowResultAndClean(results));
     }
 
     IEnumerator ShowResultAndClean(List<ResultMsg> results)
     {
-        yield return new WaitForSeconds(2);
+        string userId = FindPlayerIdByIndex(turn);
+        if (userId != "")
+        {
+            GameObject obj = GameObject.Find(userId);
+            UserController status = obj.GetComponent<UserController>();
+            status.isActive = false;
+        }
+        yield return new WaitForSeconds(1);
         for (int i = 0; i < results.Count; i++)
         {
             if (player.index == results[i].index)
@@ -550,7 +593,7 @@ public class Catte : MonoBehaviour
                     IndicatorController controller = obj.GetComponent<IndicatorController>();
                     controller.isAmount = false;
                     controller.isWinner = true;
-                    controller.text = "NHAT";
+                    controller.text = "Nhất";
                 }
                 else
                 {
@@ -560,7 +603,7 @@ public class Catte : MonoBehaviour
                     IndicatorController controller = obj.GetComponent<IndicatorController>();
                     controller.isAmount = false;
                     controller.isWinner = false;
-                    controller.text = "BET";
+                    controller.text = "Bét";
                 }
             }
             else
@@ -577,27 +620,27 @@ public class Catte : MonoBehaviour
                         {
                             controller.isAmount = false;
                             controller.isWinner = true;
-                            controller.text = "NHAT";
+                            controller.text = "Nhất";
                         }
                         else
                         {
                             controller.isAmount = false;
                             controller.isWinner = false;
-                            controller.text = "BET";
+                            controller.text = "Bét";
                         }
                     }
                 }
             }
         }
 
-        yield return new WaitForSeconds(2);
+        yield return new WaitForSeconds(1);
         for (int i = 0; i < results.Count; i++)
         {
             if(player.index == results[i].index)
             {
                 GameObject obj = Instantiate(otherIndicator);
                 obj.transform.SetParent(canvas.transform, false);
-                obj.transform.position = new Vector3(playerInfos[0].transform.position.x + 0.5f, playerInfos[0].transform.position.y + 0.5f, playerInfos[0].transform.position.z);
+                obj.transform.position = new Vector3(playerInfos[0].transform.position.x + 1f, playerInfos[0].transform.position.y + 0.8f, playerInfos[0].transform.position.z);
                 IndicatorController controller = obj.GetComponent<IndicatorController>();
                 controller.isAmount = true;
                 if(results[i].change > 0)
@@ -609,6 +652,10 @@ public class Catte : MonoBehaviour
                     controller.isWinner = false;
                 }
                 controller.text = Converter.ConvertToMoney(results[i].change);
+                GameObject obj1 = GameObject.Find(player.playerInfo.userId);
+                UserController status = obj1.GetComponent<UserController>();
+                player.playerInfo.amount = results[i].amount;
+                status.SetInfo(player.playerInfo);
             }
             else
             {
@@ -619,12 +666,12 @@ public class Catte : MonoBehaviour
                         GameObject obj = Instantiate(otherIndicator);
                         obj.transform.SetParent(canvas.transform, false);
                         float xOffset = 1.0f;
-                        float yOffset = 1.0f;
+                        float yOffset = 0.8f;
                         if (otherPlayers[j].mappedIndex > 3)
                         {
                             xOffset = -1.0f;
                         }
-                        obj.transform.position = new Vector3(playerInfos[otherPlayers[j].mappedIndex].transform.position.x + 0.5f, playerInfos[otherPlayers[j].mappedIndex].transform.position.y + 0.5f, playerInfos[otherPlayers[j].mappedIndex].transform.position.z);
+                        obj.transform.position = new Vector3(playerInfos[otherPlayers[j].mappedIndex].transform.position.x + xOffset, playerInfos[otherPlayers[j].mappedIndex].transform.position.y + yOffset, playerInfos[otherPlayers[j].mappedIndex].transform.position.z);
                         IndicatorController controller = obj.GetComponent<IndicatorController>();
                         controller.isAmount = true;
                         if (results[i].change > 0)
@@ -636,10 +683,17 @@ public class Catte : MonoBehaviour
                             controller.isWinner = false;
                         }
                         controller.text = Converter.ConvertToMoney(results[i].change);
+                        GameObject obj1 = GameObject.Find(otherPlayers[j].playerInfo.userId);
+                        UserController status = obj1.GetComponent<UserController>();
+                        otherPlayers[j].playerInfo.amount = results[i].amount;
+                        status.SetInfo(otherPlayers[j].playerInfo);
                     }
                 }
             }
         }
+
+        inGame = false;
+        moveTimeout = false;
 
         yield return new WaitForSeconds(2);
         var cards = GameObject.FindGameObjectsWithTag("Card");
@@ -652,11 +706,11 @@ public class Catte : MonoBehaviour
         {
             Destroy(indicator);
         }
-
+        
         if(requestLeave == true)
         {
-            yield return new WaitForSeconds(1);
             MessageHandler.LeaveRoom();
+            GameClient.Disconnect();
             SceneManager.LoadSceneAsync("RoomScene");
 
         }
@@ -677,6 +731,10 @@ public class Catte : MonoBehaviour
     public void OnClickCard(string cardname) {
         Debug.Log("XXXX " + turn.ToString() + " " + player.index.ToString());
         if (turn != player.index)
+        {
+            return;
+        }
+        if (moveTimeout)
         {
             return;
         }
@@ -742,6 +800,10 @@ public class Catte : MonoBehaviour
     }
 
     public void PlayCard() {
+        if (moveTimeout == true)
+        {
+            return;
+        }
         foreach (var p in player.cards)
         {
             GameObject obj = GameObject.Find(p);
@@ -759,6 +821,10 @@ public class Catte : MonoBehaviour
 
     public void FoldCard()
     {
+        if (moveTimeout == true)
+        {
+            return;
+        }
         foreach (var p in player.cards)
         {
             GameObject obj = GameObject.Find(p);
@@ -793,18 +859,22 @@ public class Catte : MonoBehaviour
     IEnumerator PlayLastCard()
     {
         yield return new WaitForSeconds(1);
-        if (lastTopCard == "")
+        if (player.cards.Count != 0)
         {
-            MessageHandler.Play(player.cards[0]);
-        }
-        else {
-            if (largerCard(player.cards[0], lastTopCard))
+            if (lastTopCard == "")
             {
                 MessageHandler.Play(player.cards[0]);
             }
             else
             {
-                MessageHandler.Fold(player.cards[0]);
+                if (largerCard(player.cards[0], lastTopCard))
+                {
+                    MessageHandler.Play(player.cards[0]);
+                }
+                else
+                {
+                    MessageHandler.Fold(player.cards[0]);
+                }
             }
         }
     }
@@ -825,6 +895,7 @@ public class Catte : MonoBehaviour
         else
         {
             MessageHandler.LeaveRoom();
+            GameClient.Disconnect();
             SceneManager.LoadSceneAsync("RoomScene");
         }
     }
@@ -840,15 +911,19 @@ public class Catte : MonoBehaviour
 
     IEnumerator ShowCountdown()
     {
-        GameObject inform = GameObject.Find("Inform");
         inform.SetActive(true);
         Text informMsg = inform.GetComponent<Text>();
-        for (int i = 15; i > 0; i++)
+        for (int i = 15; i > 0; i--)
         {
             informMsg.text = "Ván đấu sẽ được bắt đầu sau " + i.ToString() + " giây";
             yield return new WaitForSeconds(1);
         }
 
         inform.SetActive(false);
+    }
+
+    public void MoveTimeout()
+    {
+        moveTimeout = true;
     }
 }

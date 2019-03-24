@@ -12,12 +12,14 @@ public class UserController : MonoBehaviour
     public RawImage userImage;
     public bool isActive = false;
     public bool eliminated = false;
-    [SerializeField] private float percentage;
-    [SerializeField] private float speed;
+    private float percentage = 0;
+    private float speed = 11;
+    Catte catte;
 
     // Start is called before the first frame update
     void Start()
     {
+        catte = FindObjectOfType<Catte>();
     }
 
     // Update is called once per frame
@@ -34,6 +36,7 @@ public class UserController : MonoBehaviour
             }
             else
             {
+                catte.MoveTimeout();
                 isActive = false;
             }
         }
@@ -48,7 +51,7 @@ public class UserController : MonoBehaviour
     public void SetInfo(PlayerInfo info)
     {
         userName.text = info.userName;
-        userAmount.text = info.amount.ToString();
+        userAmount.text = Converter.ConvertToMoney(info.amount);
     }
 
     public void SetTexture(Texture2D texture)

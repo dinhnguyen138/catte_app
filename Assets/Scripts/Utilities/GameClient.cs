@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using UnityEngine;
 
 public static class GameClient
@@ -16,37 +17,61 @@ public static class GameClient
     public static event OnDisconnect OnDisconnectEvent;
     private static TcpClient tcpClient;
     private static SslStream stream;
+    private static string serverHost;
     private static byte[] recvBuffer = new byte[4096];
 
     public static void Init(string host)
     {
+        serverHost = host;
+        if (host == "")
+        {
+            serverHost = Setting.GetGamehost();
+        }
         tcpClient = new TcpClient();
         tcpClient.ReceiveBufferSize = 4096;
         tcpClient.SendBufferSize = 4096;
-        tcpClient.BeginConnect(host, 9999, new AsyncCallback(ClientConnect), tcpClient);
     }
 
-    private static void ClientConnect(IAsyncResult ar)
+    public static void Connect()
     {
-        tcpClient.EndConnect(ar);
-        if (tcpClient.Connected == false)
-        {
-            OnDisconnectEvent();
-            return;
-        }
-        else
-        {
-            stream = new SslStream(
-                tcpClient.GetStream(),
-                false,
-                new RemoteCertificateValidationCallback(ValidateServerCertificate),
-                null
-            );
-            stream.AuthenticateAsClient("");
-            tcpClient.NoDelay = false;
-            OnConnectEvent();
-            stream.BeginRead(recvBuffer, 0, recvBuffer.Length, ClientReceive, null);
-        }
+        Thread connectThread = new Thread(new ThreadStart(() => {
+            var result = tcpClient.BeginConnect(serverHost, 9999, null, null);
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+
+            try
+            {
+                tcpClient.EndConnect(result);
+            }
+            catch { }
+            if (!success)
+            {
+                OnDisconnectEvent();
+            }
+            else
+            {
+                if (tcpClient.Connected == false)
+                {
+                    Debug.Log("Connect failed");
+                    OnDisconnectEvent();
+                    return;
+                }
+                else
+                {
+                    stream = new SslStream(
+                        tcpClient.GetStream(),
+                        false,
+                        new RemoteCertificateValidationCallback(ValidateServerCertificate),
+                        null
+                    );
+                    stream.AuthenticateAsClient("");
+                    Debug.Log("Success handshake to server");
+                    tcpClient.NoDelay = false;
+                    OnConnectEvent();
+                    stream.BeginRead(recvBuffer, 0, recvBuffer.Length, ClientReceive, null);
+                }
+            }
+        }));
+        connectThread.Start();
     }
 
     private static void ClientReceive(IAsyncResult ar)
@@ -78,7 +103,10 @@ public static class GameClient
         byte[] buffer = new byte[data.Length];
         Array.Copy(data, buffer, data.Length);
         Debug.Log("send " + data.Length);
-        stream.Write(buffer, 0, data.Length);
+        if (stream != null)
+        {
+            stream.Write(buffer, 0, data.Length);
+        }
     }
 
     public static void Disconnect()

@@ -140,6 +140,15 @@ public class ResultMsg {
     public System.Int64 amount;
 }
 
+public class CreateRoomMsg
+{
+    [JsonProperty("amount")]
+    public long amount;
+
+    [JsonProperty("numplayer")]
+    public int maxPlayer;
+}
+
 public class LeaveMsg
 {
     [JsonProperty("index")]

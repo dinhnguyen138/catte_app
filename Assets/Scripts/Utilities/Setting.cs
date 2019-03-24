@@ -8,13 +8,14 @@ using UnityEngine;
 
 static class Setting
 {
-    static string host = "";
-    static string googleToken = "";
-
+    static Config config;
     class Config
     {
-        [JsonProperty("host")]
-        public string host;
+        [JsonProperty("servicehost")]
+        public string serviceHost;
+
+        [JsonProperty("gamehost")]
+        public string gameHost;
 
         [JsonProperty("googletoken")]
         public string token;
@@ -23,26 +24,34 @@ static class Setting
     static void LoadSetting()
     {
         TextAsset data = Resources.Load<TextAsset>("env");
-        Config config = JsonConvert.DeserializeObject<Config>(data.text);
-        host = config.host;
-        googleToken = config.token;
+        config = JsonConvert.DeserializeObject<Config>(data.text);
+        
     }
 
     public static string GetGoogleToken()
     {
-        if (googleToken == "")
+        if (config == null)
         {
             LoadSetting();
         }
-        return googleToken;
+        return config.token;
     }
 
-    public static string GetHost()
+    public static string GetServiceHost()
     {
-        if (host == "")
+        if (config == null)
         {
             LoadSetting();
         }
-        return host;
+        return config.serviceHost;
+    }
+
+    public static string GetGamehost()
+    {
+        if (config == null)
+        {
+            LoadSetting();
+        }
+        return config.gameHost;
     }
 }
